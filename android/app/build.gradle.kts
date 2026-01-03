@@ -36,7 +36,7 @@ android {
         applicationId = "com.mobileai.stickerapp"
         minSdk = 24
         targetSdk = 35
-        versionCode = 2
+        versionCode = 3
         versionName = "1.0"
     }
 

@@ -139,3 +139,12 @@
 -keep class com.google.android.play.core.splitinstall.** { *; }
 -keep class com.google.android.play.core.tasks.** { *; }
 -dontwarn com.google.android.play.core.**
+
+# TensorFlow Lite rules
+-keep class org.tensorflow.lite.** { *; }
+-keep class org.tensorflow.lite.gpu.** { *; }
+-keep class org.tensorflow.lite.nnapi.** { *; }
+-keep class org.tensorflow.lite.support.** { *; }
+-dontwarn org.tensorflow.lite.**
+-keep class org.tensorflow.lite.gpu.GpuDelegateFactory$Options { *; }
+-keep class org.tensorflow.lite.gpu.GpuDelegate { *; }

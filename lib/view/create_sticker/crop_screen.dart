@@ -387,7 +387,7 @@ class _CropScreenState extends State<CropScreen> {
           CropModeSelector(
             items: [
               CropModeItemData(
-                iconAsset: 'assets/icons/Ai.svg',
+                iconAsset: 'assets/icons/AI_cut.svg',
                 label: 'crop_mode_auto'.tr,
                 selected: _mode == _CropMode.autoCutout,
                 onTap: () => _setMode(_CropMode.autoCutout),
@@ -411,7 +411,7 @@ class _CropScreenState extends State<CropScreen> {
                 onTap: () => _setMode(_CropMode.circle),
               ),
               CropModeItemData(
-                iconAsset: 'assets/icons/Heart.svg',
+                iconAsset: 'assets/icons/heart.svg',
                 label: 'crop_mode_heart'.tr,
                 selected: _mode == _CropMode.heart,
                 onTap: () => _setMode(_CropMode.heart),
