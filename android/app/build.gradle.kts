@@ -17,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.mobileai.stickerapp"
-    compileSdk = 35
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     // Ensure Java sources placed under src/main/kotlin are also compiled.
@@ -35,8 +35,8 @@ android {
     defaultConfig {
         applicationId = "com.mobileai.stickerapp"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 3
+        targetSdk = 36
+        versionCode = 5
         versionName = "1.0"
     }
 
