@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 
 
 /// Service chuyên quản lý preload resources (ads, images)
@@ -17,11 +18,12 @@ class PreloadService extends GetxService {
   @override
   void onInit() {
     super.onInit();
-    debugPrint('✅ PreloadService initialized');
+    AppLogger.i('[PreloadService] Initialized');
   }
 
   /// Preload tất cả resources song song
   Future<void> preloadAll(BuildContext context) async {
+    AppLogger.i('[PreloadService] Starting preload all resources');
     _progress.value = 0.0;
 
     try {
@@ -31,9 +33,13 @@ class PreloadService extends GetxService {
       ]);
 
       _progress.value = 1.0;
-      debugPrint('✅ All resources loaded');
-    } catch (e) {
-      debugPrint('⚠️ Preload error: $e');
+      AppLogger.i('[PreloadService] All resources loaded successfully');
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[PreloadService] Preload error',
+        e,
+        stackTrace,
+      );
       _progress.value = 1.0;
     }
   }
@@ -88,22 +94,34 @@ class PreloadService extends GetxService {
 
   /// Load images với timeout
   Future<void> _loadImages(BuildContext context) async {
-    if (_imagesLoaded.value) return;
+    if (_imagesLoaded.value) {
+      AppLogger.d('[PreloadService] Images already loaded, skipping');
+      return;
+    }
 
+    AppLogger.d('[PreloadService] Loading images...');
     try {
+      // Precache splash_image.png vì nó được hiển thị trong splash screen
+      // logo.png không cần precache vì chỉ dùng làm launcher icon
       await precacheImage(
-        const AssetImage('assets/images/logo_splash.png'),
+        const AssetImage('assets/images/splash_image.png'),
         context,
       ).timeout(
         const Duration(seconds: 3),
-        onTimeout: () => debugPrint('⏱️ Images timeout'),
+        onTimeout: () {
+          AppLogger.w('[PreloadService] splash_image.png timeout after 3 seconds');
+        },
       );
 
       _imagesLoaded.value = true;
       _progress.value += 0.5;
-      debugPrint('✅ Images loaded');
-    } catch (e) {
-      debugPrint('⚠️ Images error: $e');
+      AppLogger.i('[PreloadService] Images loaded successfully');
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[PreloadService] Images loading error',
+        e,
+        stackTrace,
+      );
       _imagesLoaded.value = true;
       _progress.value += 0.5;
     }
@@ -111,6 +129,7 @@ class PreloadService extends GetxService {
 
   /// Reset state
   void reset() {
+    AppLogger.d('[PreloadService] Resetting state');
     _adsLoaded.value = false;
     _imagesLoaded.value = false;
     _progress.value = 0.0;
@@ -118,7 +137,7 @@ class PreloadService extends GetxService {
 
   @override
   void onClose() {
-    debugPrint('🧹 PreloadService disposed');
+    AppLogger.d('[PreloadService] Disposed');
     super.onClose();
   }
 }

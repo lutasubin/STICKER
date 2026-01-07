@@ -1,6 +1,6 @@
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 
 /// Service chuyên quản lý local storage
 class StorageService extends GetxService {
@@ -16,7 +16,7 @@ class StorageService extends GetxService {
   void onInit() {
     super.onInit();
     _box = GetStorage();
-    debugPrint('✅ StorageService initialized');
+    AppLogger.i('[StorageService] Initialized');
   }
 
   // ============ First Open ============
@@ -24,17 +24,20 @@ class StorageService extends GetxService {
 
   void markAppAsOpened() {
     _box.write(_keyFirstOpen, false);
-    debugPrint('📝 App marked as opened');
+    AppLogger.i('[StorageService] App marked as opened');
   }
 
-  void resetFirstOpen() => _box.write(_keyFirstOpen, true);
+  void resetFirstOpen() {
+    _box.write(_keyFirstOpen, true);
+    AppLogger.d('[StorageService] First open reset');
+  }
 
   // ============ Language ============
   String? getSelectedLanguage() => _box.read(_keySelectedLanguage);
 
   void saveSelectedLanguage(String languageCode) {
     _box.write(_keySelectedLanguage, languageCode);
-    debugPrint('📝 Language saved: $languageCode');
+    AppLogger.i('[StorageService] Language saved: $languageCode');
   }
 
   // ============ Last Server ============
@@ -42,23 +45,27 @@ class StorageService extends GetxService {
 
   void saveLastServer(String serverId) {
     _box.write(_keyLastServer, serverId);
-    debugPrint('📝 Last server saved: $serverId');
+    AppLogger.i('[StorageService] Last server saved: $serverId');
   }
 
-  void clearLastServer() => _box.remove(_keyLastServer);
+  void clearLastServer() {
+    _box.remove(_keyLastServer);
+    AppLogger.d('[StorageService] Last server cleared');
+  }
 
   // ============ Auto Connect ============
   bool isAutoConnectEnabled() => _box.read(_keyAutoConnect) ?? false;
 
   void setAutoConnect(bool enabled) {
     _box.write(_keyAutoConnect, enabled);
-    debugPrint('📝 Auto connect: $enabled');
+    AppLogger.i('[StorageService] Auto connect: $enabled');
   }
 
   // ============ Utility ============
   void clearAll() {
+    AppLogger.w('[StorageService] Clearing all storage data');
     _box.erase();
-    debugPrint('🗑️ Storage cleared');
+    AppLogger.i('[StorageService] Storage cleared');
   }
 
   T? read<T>(String key) => _box.read(key);
@@ -69,7 +76,7 @@ class StorageService extends GetxService {
 
   @override
   void onClose() {
-    debugPrint('🧹 StorageService disposed');
+    AppLogger.d('[StorageService] Disposed');
     super.onClose();
   }
 }

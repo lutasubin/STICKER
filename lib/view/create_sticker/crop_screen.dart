@@ -2,7 +2,9 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/service/remove_bg_service.dart';
 import 'package:get/get.dart';
 import 'package:extended_image/extended_image.dart';
@@ -24,16 +26,9 @@ class CropScreen extends StatefulWidget {
   State<CropScreen> createState() => _CropScreenState();
 }
 
-enum _CropMode {
-  autoCutout,
-  manual,
-  square,
-  circle,
-  heart,
-}
+enum _CropMode { autoCutout, manual, square, circle, heart }
 
-extension on _CropMode {
-}
+extension on _CropMode {}
 
 class _CropScreenState extends State<CropScreen> {
   late final UserStickerPack _pack;
@@ -46,6 +41,7 @@ class _CropScreenState extends State<CropScreen> {
       GlobalKey<ExtendedImageEditorState>();
 
   bool _saving = false;
+  String? _loadingMessage;
 
   _CropMode _mode = _CropMode.manual;
 
@@ -58,7 +54,7 @@ class _CropScreenState extends State<CropScreen> {
 
       // Force editor to apply new aspect ratio by resetting after rebuild.
       await Future<void>.delayed(Duration.zero);
-      
+
       if (_editorKey.currentState != null) {
         _editorKey.currentState?.reset();
       } else {
@@ -79,14 +75,18 @@ class _CropScreenState extends State<CropScreen> {
     try {
       final args = Get.arguments;
       if (args is! Map) {
-        throw Exception('Expected Map arguments, got ${args.runtimeType}: $args');
+        throw Exception(
+          'Expected Map arguments, got ${args.runtimeType}: $args',
+        );
       }
       _pack = args['pack'] as UserStickerPack;
       _imageFile = args['imageFile'] as File;
       _replaceStickerUri = args['replaceStickerUri'] as String?;
       _goToUserPackDetail = args['goToUserPackDetail'] == true;
       _isNewPack = args['isNewPack'] == true;
-      debugPrint('CropScreen initState: pack=${_pack.title}, imageFile=${_imageFile.path}, replaceStickerUri=$_replaceStickerUri, goToUserPackDetail=$_goToUserPackDetail, isNewPack=$_isNewPack');
+      debugPrint(
+        'CropScreen initState: pack=${_pack.title}, imageFile=${_imageFile.path}, replaceStickerUri=$_replaceStickerUri, goToUserPackDetail=$_goToUserPackDetail, isNewPack=$_isNewPack',
+      );
     } catch (e, st) {
       debugPrint('CropScreen initState error: $e');
       debugPrint(st.toString());
@@ -102,71 +102,51 @@ class _CropScreenState extends State<CropScreen> {
     setState(() => _saving = true);
 
     try {
-      debugPrint('_onNext: starting, mode=$_mode');
-      
+      AppLogger.i('[CropScreen] Starting crop process, mode=$_mode');
+
       // Show immediate feedback
       if (mounted) {
         setState(() {});
       }
-      
-      // Small delay to allow UI to update
-      await Future.delayed(const Duration(milliseconds: 100));
-      
+
       final editorState = _editorKey.currentState;
       final cropRect = editorState?.getCropRect();
-      debugPrint('_onNext: cropRect=$cropRect');
 
-      final Uint8List inputBytes;
+      Uint8List pngBytes;
+
       if (_mode == _CropMode.autoCutout) {
-        debugPrint('_onNext: using auto cutout');
-        inputBytes = await _removeBgCutout();
+        // AI crop phải chạy trên main thread (TensorFlow Lite không hoạt động trong isolate)
+        AppLogger.d('[CropScreen] Processing AI cutout on main thread');
+        if (mounted) {
+          setState(() => _loadingMessage = 'Đang xử lý AI...');
+        }
+        // Yield để UI update
+        await Future.delayed(Duration.zero);
+        pngBytes = await _processAICrop();
       } else {
-        debugPrint('_onNext: reading image file');
-        inputBytes = await _imageFile.readAsBytes();
+        // Manual crop có thể chạy trong isolate
+        AppLogger.d('[CropScreen] Processing manual crop in isolate');
+        if (mounted) {
+          setState(() => _loadingMessage = 'Đang xử lý...');
+        }
+        pngBytes = await _processImageInIsolate(cropRect);
       }
-      debugPrint('_onNext: inputBytes length=${inputBytes.length}');
 
-      final decoded = img.decodeImage(inputBytes);
-      if (decoded == null) {
-        throw Exception('error_cannot_read_image'.tr);
+      if (mounted) {
+        setState(() => _loadingMessage = 'Đang nén ảnh...');
       }
-      debugPrint('_onNext: decoded image ${decoded.width}x${decoded.height}');
+      // Yield để UI update
+      await Future.delayed(Duration.zero);
 
-      final img.Image cropped =
-          _mode == _CropMode.autoCutout ? decoded : _cropByRect(decoded, cropRect);
-      debugPrint('_onNext: cropped image ${cropped.width}x${cropped.height}');
-
-      debugPrint('_onNext: rendering to sticker canvas');
-      final canvas = _renderToStickerCanvas(
-        cropped,
-        applyCircle: _mode == _CropMode.circle,
-        applyHeart: _mode == _CropMode.heart,
+      AppLogger.d(
+        '[CropScreen] Image processed, size=${pngBytes.length} bytes',
       );
-      debugPrint('_onNext: canvas rendered ${canvas.width}x${canvas.height}');
 
-      debugPrint('_onNext: encoding webp');
-      final webpBytes = await _encodeWebp(canvas);
-      debugPrint('_onNext: webp encoded size=${webpBytes.length}');
+      // Compress và save trên main thread (cần plugin)
+      final fileUri = await _compressAndSave(pngBytes);
+      AppLogger.i('[CropScreen] File saved: $fileUri');
 
-      final dir = await getApplicationDocumentsDirectory();
-      final outDir = Directory('${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${_pack.id}');
-      if (!await outDir.exists()) {
-        await outDir.create(recursive: true);
-      }
-
-      final outFile = File(
-        '${outDir.path}${Platform.pathSeparator}${DateTime.now().millisecondsSinceEpoch}.webp',
-      );
-      await outFile.writeAsBytes(webpBytes, flush: true);
-      debugPrint('_onNext: file written to ${outFile.path}');
-
-      final fileUri = Uri.file(outFile.path).toString();
-
-      debugPrint('_onNext: navigating to edit sticker');
-      
-      // Smooth transition with delay
-      await Future.delayed(const Duration(milliseconds: 200));
-      
+      // Navigate ngay
       Get.toNamed(
         AppRoutes.editSticker,
         arguments: {
@@ -177,38 +157,86 @@ class _CropScreenState extends State<CropScreen> {
           'isNewPack': _isNewPack,
         },
       );
-      debugPrint('_onNext: navigation completed');
+
+      AppLogger.i('[CropScreen] Navigation completed');
     } catch (e, st) {
-      debugPrint('_onNext ERROR: $e');
-      debugPrint(st.toString());
+      AppLogger.e('[CropScreen] Error during crop process', e, st);
       if (mounted) {
         AppDialogs.showError(e.toString());
       }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _loadingMessage = null;
+        });
+      }
     }
   }
 
-  img.Image _cropByRect(img.Image source, Rect? rect) {
-    if (rect == null) return source;
-    final left = rect.left.round().clamp(0, source.width - 1);
-    final top = rect.top.round().clamp(0, source.height - 1);
-    final right = rect.right.round().clamp(1, source.width);
-    final bottom = rect.bottom.round().clamp(1, source.height);
-    final w = math.max(1, right - left);
-    final h = math.max(1, bottom - top);
-    return img.copyCrop(source, x: left, y: top, width: w, height: h);
+  /// Process AI crop trên main thread (TensorFlow Lite cần main thread)
+  /// Tối ưu bằng cách yield để UI update và giảm processing time
+  Future<Uint8List> _processAICrop() async {
+    // Bước 1: Remove background (bước nặng nhất)
+    if (mounted) {
+      setState(() => _loadingMessage = 'Đang xóa nền bằng AI...');
+    }
+    await Future.delayed(Duration.zero); // Yield để UI update
+
+    final resultBytes = await RemoveBgService.removeBackground(_imageFile);
+
+    // Bước 2: Decode image
+    if (mounted) {
+      setState(() => _loadingMessage = 'Đang xử lý ảnh...');
+    }
+    await Future.delayed(Duration.zero);
+
+    final decoded = img.decodeImage(resultBytes);
+    if (decoded == null) {
+      throw Exception('error_cannot_read_image'.tr);
+    }
+
+    // Bước 3: Apply threshold (tối ưu bằng cách xử lý trực tiếp trên buffer)
+    if (mounted) {
+      setState(() => _loadingMessage = 'Đang làm sạch ảnh...');
+    }
+    await Future.delayed(Duration.zero);
+
+    if (decoded.numChannels == 4) {
+      // Tối ưu: xử lý trực tiếp trên buffer thay vì getPixel/setPixel
+      final pixels = decoded.buffer.asUint8List();
+      // RGBA format: mỗi pixel 4 bytes [R, G, B, A]
+      for (int i = 3; i < pixels.length; i += 4) {
+        if (pixels[i] <= 64) {
+          pixels[i] = 0; // Set alpha = 0 (transparent)
+          // Có thể set RGB = 0 để tiết kiệm memory, nhưng không cần thiết
+        }
+      }
+    }
+
+    // Bước 4: Render to canvas
+    if (mounted) {
+      setState(() => _loadingMessage = 'Đang tạo sticker...');
+    }
+    await Future.delayed(Duration.zero);
+
+    final canvas = _renderToStickerCanvas(
+      decoded,
+      applyCircle: false,
+      applyHeart: false,
+    );
+
+    return Uint8List.fromList(img.encodePng(canvas));
   }
 
+  /// Render to sticker canvas (helper method)
   img.Image _renderToStickerCanvas(
     img.Image cropped, {
     required bool applyCircle,
     required bool applyHeart,
   }) {
-    final rgb = cropped.numChannels == 4
-        ? cropped
-        : cropped.convert(numChannels: 4);
-
+    final rgb =
+        cropped.numChannels == 4 ? cropped : cropped.convert(numChannels: 4);
     final scale = math.min(512 / rgb.width, 512 / rgb.height);
     final newW = math.max(1, (rgb.width * scale).round());
     final newH = math.max(1, (rgb.height * scale).round());
@@ -234,12 +262,13 @@ class _CropScreenState extends State<CropScreen> {
     final cx = (canvas.width - 1) / 2.0;
     final cy = (canvas.height - 1) / 2.0;
     final r = math.min(canvas.width, canvas.height) / 2.0;
+    final rSquared = r * r;
 
     for (var y = 0; y < canvas.height; y++) {
       for (var x = 0; x < canvas.width; x++) {
         final dx = x - cx;
         final dy = y - cy;
-        final inside = (dx * dx + dy * dy) <= (r * r);
+        final inside = (dx * dx + dy * dy) <= rSquared;
         if (!inside) {
           final p = canvas.getPixel(x, y);
           canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
@@ -249,6 +278,217 @@ class _CropScreenState extends State<CropScreen> {
   }
 
   void _applyHeartMask(img.Image canvas) {
+    final cx = (canvas.width - 1) / 2.0;
+    final cy = (canvas.height - 1) / 2.0;
+    final scale = (math.min(canvas.width, canvas.height) / 2.0) * 0.77;
+
+    for (var y = 0; y < canvas.height; y++) {
+      for (var x = 0; x < canvas.width; x++) {
+        final nx = (x - cx) / scale;
+        final ny = (y - cy) / scale;
+        final yy = -ny;
+        final a = nx * nx + yy * yy - 1;
+        final f = a * a * a - (nx * nx) * (yy * yy * yy);
+        final inside = f <= 0;
+
+        if (!inside) {
+          final p = canvas.getPixel(x, y);
+          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+        }
+      }
+    }
+  }
+
+  /// Process manual crop trong isolate (không dùng plugin)
+  Future<Uint8List> _processImageInIsolate(Rect? cropRect) async {
+    return await compute(_processImageIsolate, {
+      'imagePath': _imageFile.path,
+      'cropRect':
+          cropRect != null
+              ? {
+                'left': cropRect.left,
+                'top': cropRect.top,
+                'right': cropRect.right,
+                'bottom': cropRect.bottom,
+              }
+              : null,
+      'applyCircle': _mode == _CropMode.circle,
+      'applyHeart': _mode == _CropMode.heart,
+    });
+  }
+
+  /// Compress và save trên main thread (cần plugin)
+  Future<String> _compressAndSave(Uint8List pngBytes) async {
+    // Compress WebP
+    final webpBytes = await _encodeWebp(pngBytes);
+    AppLogger.d('[CropScreen] WebP encoded, size=${webpBytes.length} bytes');
+
+    // Save file
+    final dir = await getApplicationDocumentsDirectory();
+    final outDir = Directory(
+      '${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${_pack.id}',
+    );
+    if (!await outDir.exists()) {
+      await outDir.create(recursive: true);
+    }
+
+    final outFile = File(
+      '${outDir.path}${Platform.pathSeparator}${DateTime.now().millisecondsSinceEpoch}.webp',
+    );
+    await outFile.writeAsBytes(webpBytes, flush: true);
+
+    return Uri.file(outFile.path).toString();
+  }
+
+  /// Encode WebP trên main thread (cần plugin)
+  Future<Uint8List> _encodeWebp(Uint8List pngBytes) async {
+    const maxBytes = 100 * 1024;
+    const qualities = <int>[
+      95,
+      90,
+      85,
+      80,
+      75,
+      70,
+      65,
+      60,
+      55,
+      50,
+      45,
+      40,
+      35,
+      30,
+    ];
+
+    Uint8List? best;
+    for (final q in qualities) {
+      final out = await FlutterImageCompress.compressWithList(
+        pngBytes,
+        format: CompressFormat.webp,
+        quality: q,
+        keepExif: false,
+      );
+      if (best == null || out.length < best.length) {
+        best = Uint8List.fromList(out);
+      }
+      if (out.length <= maxBytes) {
+        return Uint8List.fromList(out);
+      }
+    }
+
+    if (best != null) {
+      throw Exception(
+        'error_sticker_too_large'.trParams({
+          'sizeKb': (best.length / 1024).toStringAsFixed(1),
+        }),
+      );
+    }
+
+    throw Exception('error_cannot_encode_webp'.tr);
+  }
+
+  /// Static function để chạy trong isolate (chỉ xử lý manual crop, trả về PNG bytes)
+  static Future<Uint8List> _processImageIsolate(
+    Map<String, dynamic> params,
+  ) async {
+    final imagePath = params['imagePath'] as String;
+    final cropRectMap = params['cropRect'] as Map<String, double>?;
+    final applyCircle = params['applyCircle'] as bool;
+    final applyHeart = params['applyHeart'] as bool;
+
+    final cropRect =
+        cropRectMap != null
+            ? Rect.fromLTRB(
+              cropRectMap['left']!,
+              cropRectMap['top']!,
+              cropRectMap['right']!,
+              cropRectMap['bottom']!,
+            )
+            : null;
+
+    // Read image
+    final file = File(imagePath);
+    final inputBytes = await file.readAsBytes();
+
+    final decoded = img.decodeImage(inputBytes);
+    if (decoded == null) {
+      throw Exception('error_cannot_read_image');
+    }
+
+    // Crop
+    final img.Image cropped = _cropByRectIsolate(decoded, cropRect);
+
+    // Render to canvas
+    final canvas = _renderToStickerCanvasIsolate(
+      cropped,
+      applyCircle: applyCircle,
+      applyHeart: applyHeart,
+    );
+
+    // Trả về PNG bytes (WebP sẽ làm trên main thread)
+    return Uint8List.fromList(img.encodePng(canvas));
+  }
+
+  static img.Image _cropByRectIsolate(img.Image source, Rect? rect) {
+    if (rect == null) return source;
+    final left = rect.left.round().clamp(0, source.width - 1);
+    final top = rect.top.round().clamp(0, source.height - 1);
+    final right = rect.right.round().clamp(1, source.width);
+    final bottom = rect.bottom.round().clamp(1, source.height);
+    final w = math.max(1, right - left);
+    final h = math.max(1, bottom - top);
+    return img.copyCrop(source, x: left, y: top, width: w, height: h);
+  }
+
+  static img.Image _renderToStickerCanvasIsolate(
+    img.Image cropped, {
+    required bool applyCircle,
+    required bool applyHeart,
+  }) {
+    final rgb =
+        cropped.numChannels == 4 ? cropped : cropped.convert(numChannels: 4);
+
+    final scale = math.min(512 / rgb.width, 512 / rgb.height);
+    final newW = math.max(1, (rgb.width * scale).round());
+    final newH = math.max(1, (rgb.height * scale).round());
+    final resized = img.copyResize(rgb, width: newW, height: newH);
+
+    final canvas = img.Image(width: 512, height: 512, numChannels: 4);
+    img.fill(canvas, color: img.ColorRgba8(0, 0, 0, 0));
+
+    final dx = ((512 - resized.width) / 2).round();
+    final dy = ((512 - resized.height) / 2).round();
+    img.compositeImage(canvas, resized, dstX: dx, dstY: dy);
+
+    if (applyCircle) {
+      _applyCircleMaskIsolate(canvas);
+    } else if (applyHeart) {
+      _applyHeartMaskIsolate(canvas);
+    }
+
+    return canvas;
+  }
+
+  static void _applyCircleMaskIsolate(img.Image canvas) {
+    final cx = (canvas.width - 1) / 2.0;
+    final cy = (canvas.height - 1) / 2.0;
+    final r = math.min(canvas.width, canvas.height) / 2.0;
+    final rSquared = r * r;
+
+    for (var y = 0; y < canvas.height; y++) {
+      for (var x = 0; x < canvas.width; x++) {
+        final dx = x - cx;
+        final dy = y - cy;
+        final inside = (dx * dx + dy * dy) <= rSquared;
+        if (!inside) {
+          final p = canvas.getPixel(x, y);
+          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+        }
+      }
+    }
+  }
+
+  static void _applyHeartMaskIsolate(img.Image canvas) {
     final cx = (canvas.width - 1) / 2.0;
     final cy = (canvas.height - 1) / 2.0;
     final scale = (math.min(canvas.width, canvas.height) / 2.0) * 0.77;
@@ -271,112 +511,6 @@ class _CropScreenState extends State<CropScreen> {
     }
   }
 
-  Future<Uint8List> _encodeWebp(img.Image image) async {
-    // Encode PNG first to preserve alpha, then compress to WebP with quality loop.
-    final pngBytes = Uint8List.fromList(img.encodePng(image));
-    const maxBytes = 100 * 1024;
-
-    // Try a descending set of qualities.
-    const qualities = <int>[95, 90, 85, 80, 75, 70, 65, 60, 55, 50, 45, 40, 35, 30];
-
-    Uint8List? best;
-    for (final q in qualities) {
-      final out = await FlutterImageCompress.compressWithList(
-        pngBytes,
-        format: CompressFormat.webp,
-        quality: q,
-        keepExif: false,
-      );
-      if (best == null || out.length < best.length) {
-        best = Uint8List.fromList(out);
-      }
-      if (out.length <= maxBytes) {
-        return Uint8List.fromList(out);
-      }
-    }
-
-    if (best != null) {
-      debugPrint('⚠️ Không đạt <100KB. Best=${best.length} bytes');
-      throw Exception(
-        'error_sticker_too_large'.trParams({
-          'sizeKb': (best.length / 1024).toStringAsFixed(1),
-        }),
-      );
-    }
-
-    throw Exception('error_cannot_encode_webp'.tr);
-  }
-
-  img.Image _unsharpMask(img.Image src, {double amount = 0.5, int radius = 1, int threshold = 0}) {
-    final blurred = img.gaussianBlur(src, radius: radius);
-    final result = img.Image(width: src.width, height: src.height, numChannels: src.numChannels);
-    for (int y = 0; y < src.height; ++y) {
-      for (int x = 0; x < src.width; ++x) {
-        final srcPixel = src.getPixel(x, y);
-        final blurPixel = blurred.getPixel(x, y);
-        final diff = (srcPixel.r - blurPixel.r).abs() +
-                    (srcPixel.g - blurPixel.g).abs() +
-                    (srcPixel.b - blurPixel.b).abs();
-        if (diff > threshold * 3) {
-          final r = (srcPixel.r + (srcPixel.r - blurPixel.r) * amount).clamp(0, 255).toInt();
-          final g = (srcPixel.g + (srcPixel.g - blurPixel.g) * amount).clamp(0, 255).toInt();
-          final b = (srcPixel.b + (srcPixel.b - blurPixel.b) * amount).clamp(0, 255).toInt();
-          final a = srcPixel.a;
-          result.setPixelRgba(x, y, r, g, b, a);
-        } else {
-          result.setPixel(x, y, srcPixel);
-        }
-      }
-    }
-    return result;
-  }
-
-  Future<Uint8List> _removeBgCutout() async {
-  // Read original image
-  final originalBytes = await _imageFile.readAsBytes();
-  final original = img.decodeImage(originalBytes);
-  if (original == null) throw Exception('Cannot decode image');
-
-  // Upscale to at least 1536px on the longer side for better ML Kit quality
-  const targetLongSide = 1536;
-  final scale = targetLongSide / math.max(original.width, original.height);
-  final upscaled = scale > 1
-      ? img.copyResize(original, width: (original.width * scale).round(), height: (original.height * scale).round(), interpolation: img.Interpolation.average)
-      : original;
-
-  // Write upscaled to temp file
-  final tempDir = await getTemporaryDirectory();
-  final tempFile = File('${tempDir.path}/upscaled_${DateTime.now().millisecondsSinceEpoch}.png');
-  await tempFile.writeAsBytes(img.encodePng(upscaled));
-
-  // Call background remover using remove.bg API
-  final resultBytes = await RemoveBgService.removeBackground(tempFile);
-
-  // Clean up temp file
-  await tempFile.delete();
-
-  // Optional: apply slight edge smoothing to mask (simple blur on alpha channel)
-  final result = img.decodeImage(resultBytes);
-  if (result != null && result.numChannels == 4) {
-    // Apply threshold to mask: keep only high-confidence foreground (alpha > 64)
-    for (int y = 0; y < result.height; ++y) {
-      for (int x = 0; x < result.width; ++x) {
-        final pixel = result.getPixel(x, y);
-        if (pixel.a <= 64) {
-          result.setPixelRgba(x, y, pixel.r, pixel.g, pixel.b, 0);
-        }
-      }
-    }
-    // Very light blur on alpha to soften edges
-    final blurred = img.gaussianBlur(result, radius: 0);
-    // Apply unsharp mask to sharpen edges (optional)
-    final sharpened = _unsharpMask(blurred);
-    return Uint8List.fromList(img.encodePng(sharpened));
-  }
-
-  return resultBytes;
-}
-
   @override
   Widget build(BuildContext context) {
     try {
@@ -387,7 +521,7 @@ class _CropScreenState extends State<CropScreen> {
         _CropMode.manual => null,
         _CropMode.autoCutout => null,
       };
-      
+
       EditorCropLayerPainter? cropLayerPainter;
       try {
         cropLayerPainter = switch (_mode) {
@@ -401,56 +535,89 @@ class _CropScreenState extends State<CropScreen> {
       }
 
       return Scaffold(
-        appBar: CropAppBar(
-          onBack: Get.back,
-          onNext: _onNext,
-          saving: _saving,
-        ),
-        body: Column(
+        appBar: CropAppBar(onBack: Get.back, onNext: _onNext, saving: _saving),
+        body: Stack(
           children: [
-            Expanded(
-              child: CropEditor(
-                imageFile: _imageFile,
-                modeKey: _mode,
-                editorKey: _editorKey,
-                cropAspectRatio: cropAspectRatio,
-                cropLayerPainter: cropLayerPainter,
-              ),
-            ),
-            CropModeSelector(
-              items: [
-                CropModeItemData(
-                  iconAsset: 'assets/icons/AI_cut.svg',
-                  label: 'crop_mode_auto'.tr,
-                  selected: _mode == _CropMode.autoCutout,
-                  onTap: () => _setMode(_CropMode.autoCutout),
+            Column(
+              children: [
+                Expanded(
+                  child: CropEditor(
+                    imageFile: _imageFile,
+                    modeKey: _mode,
+                    editorKey: _editorKey,
+                    cropAspectRatio: cropAspectRatio,
+                    cropLayerPainter: cropLayerPainter,
+                  ),
                 ),
-                CropModeItemData(
-                  iconAsset: 'assets/icons/Crop.svg',
-                  label: 'crop_mode_manual'.tr,
-                  selected: _mode == _CropMode.manual,
-                  onTap: () => _setMode(_CropMode.manual),
-                ),
-                CropModeItemData(
-                  iconAsset: 'assets/icons/square.svg',
-                  label: 'crop_mode_square'.tr,
-                  selected: _mode == _CropMode.square,
-                  onTap: () => _setMode(_CropMode.square),
-                ),
-                CropModeItemData(
-                  iconAsset: 'assets/icons/Circle.svg',
-                  label: 'crop_mode_circle'.tr,
-                  selected: _mode == _CropMode.circle,
-                  onTap: () => _setMode(_CropMode.circle),
-                ),
-                CropModeItemData(
-                  iconAsset: 'assets/icons/heart.svg',
-                  label: 'crop_mode_heart'.tr,
-                  selected: _mode == _CropMode.heart,
-                  onTap: () => _setMode(_CropMode.heart),
+                CropModeSelector(
+                  items: [
+                    CropModeItemData(
+                      iconAsset: 'assets/icons/AI_cut.svg',
+                      label: 'crop_mode_auto'.tr,
+                      selected: _mode == _CropMode.autoCutout,
+                      onTap: () => _setMode(_CropMode.autoCutout),
+                    ),
+                    CropModeItemData(
+                      iconAsset: 'assets/icons/Crop.svg',
+                      label: 'crop_mode_manual'.tr,
+                      selected: _mode == _CropMode.manual,
+                      onTap: () => _setMode(_CropMode.manual),
+                    ),
+                    CropModeItemData(
+                      iconAsset: 'assets/icons/square.svg',
+                      label: 'crop_mode_square'.tr,
+                      selected: _mode == _CropMode.square,
+                      onTap: () => _setMode(_CropMode.square),
+                    ),
+                    CropModeItemData(
+                      iconAsset: 'assets/icons/Circle.svg',
+                      label: 'crop_mode_circle'.tr,
+                      selected: _mode == _CropMode.circle,
+                      onTap: () => _setMode(_CropMode.circle),
+                    ),
+                    CropModeItemData(
+                      iconAsset: 'assets/icons/heart.svg',
+                      label: 'crop_mode_heart'.tr,
+                      selected: _mode == _CropMode.heart,
+                      onTap: () => _setMode(_CropMode.heart),
+                    ),
+                  ],
                 ),
               ],
             ),
+            // Loading overlay khi đang xử lý
+            if (_saving && _loadingMessage != null)
+              Container(
+                color: Colors.black.withOpacity(0.5),
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const CircularProgressIndicator(
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Color(0xFF00C979),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _loadingMessage!,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       );
@@ -473,10 +640,7 @@ class _CropScreenState extends State<CropScreen> {
               const SizedBox(height: 16),
               Text('Error: $e'),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: Get.back,
-                child: const Text('Go Back'),
-              ),
+              ElevatedButton(onPressed: Get.back, child: const Text('Go Back')),
             ],
           ),
         ),

@@ -1,7 +1,8 @@
+import 'dart:io';
 import 'package:get/get.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/service/splash_service/storage_service.dart';
-import 'dart:io';
 
 class UserStickerPackService extends GetxService {
   static const String _keyUserStickerPacks = 'user_sticker_packs';
@@ -12,47 +13,99 @@ class UserStickerPackService extends GetxService {
   void onInit() {
     super.onInit();
     _storage = Get.find<StorageService>();
+    AppLogger.i('[UserStickerPackService] Initialized');
   }
 
   List<UserStickerPack> getAll() {
-    final raw = _storage.read(_keyUserStickerPacks);
-    if (raw is! List) return <UserStickerPack>[];
+    AppLogger.d('[UserStickerPackService] Getting all user packs');
+    try {
+      final raw = _storage.read(_keyUserStickerPacks);
+      if (raw is! List) {
+        AppLogger.d('[UserStickerPackService] No packs found, returning empty list');
+        return <UserStickerPack>[];
+      }
 
-    return raw
-        .whereType<Map>()
-        .map((e) => UserStickerPack.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+      final packs = raw
+          .whereType<Map>()
+          .map((e) => UserStickerPack.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      AppLogger.i('[UserStickerPackService] Retrieved ${packs.length} packs');
+      return packs;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to get all packs',
+        e,
+        stackTrace,
+      );
+      return <UserStickerPack>[];
+    }
   }
 
   void saveAll(List<UserStickerPack> packs) {
-    _storage.write(
-      _keyUserStickerPacks,
-      packs.map((e) => e.toJson()).toList(),
-    );
+    AppLogger.d('[UserStickerPackService] Saving ${packs.length} packs');
+    try {
+      _storage.write(
+        _keyUserStickerPacks,
+        packs.map((e) => e.toJson()).toList(),
+      );
+      AppLogger.i('[UserStickerPackService] Successfully saved ${packs.length} packs');
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to save packs',
+        e,
+        stackTrace,
+      );
+      rethrow;
+    }
   }
 
   UserStickerPack? getById(String id) {
-    final packs = getAll();
-    final index = packs.indexWhere((p) => p.id == id);
-    if (index < 0) return null;
-    return packs[index];
+    AppLogger.d('[UserStickerPackService] Getting pack by id: $id');
+    try {
+      final packs = getAll();
+      final index = packs.indexWhere((p) => p.id == id);
+      if (index < 0) {
+        AppLogger.w('[UserStickerPackService] Pack not found: $id');
+        return null;
+      }
+      AppLogger.d('[UserStickerPackService] Pack found: $id');
+      return packs[index];
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to get pack by id: $id',
+        e,
+        stackTrace,
+      );
+      return null;
+    }
   }
 
   UserStickerPack createPack({required String title}) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final id = 'user-pack-$now';
+    AppLogger.i('[UserStickerPackService] Creating new pack: $title');
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final id = 'user-pack-$now';
 
-    final pack = UserStickerPack(
-      id: id,
-      title: title,
-      createdAtMs: now,
-      stickerFileUris: const [],
-    );
+      final pack = UserStickerPack(
+        id: id,
+        title: title,
+        createdAtMs: now,
+        stickerFileUris: const [],
+      );
 
-    final packs = getAll();
-    saveAll([pack, ...packs]);
+      final packs = getAll();
+      saveAll([pack, ...packs]);
 
-    return pack;
+      AppLogger.i('[UserStickerPackService] Pack created successfully: $id');
+      return pack;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to create pack: $title',
+        e,
+        stackTrace,
+      );
+      rethrow;
+    }
   }
 
   UserStickerPack createDraftPack({required String title}) {
@@ -86,20 +139,36 @@ class UserStickerPackService extends GetxService {
     required String packId,
     required String stickerFileUri,
   }) {
-    final packs = getAll();
-    final index = packs.indexWhere((p) => p.id == packId);
-    if (index < 0) return null;
+    AppLogger.d('[UserStickerPackService] Adding sticker to pack: $packId');
+    try {
+      final packs = getAll();
+      final index = packs.indexWhere((p) => p.id == packId);
+      if (index < 0) {
+        AppLogger.w('[UserStickerPackService] Pack not found: $packId');
+        return null;
+      }
 
-    final current = packs[index];
-    final updated = current.copyWith(
-      stickerFileUris: [stickerFileUri, ...current.stickerFileUris],
-    );
+      final current = packs[index];
+      final updated = current.copyWith(
+        stickerFileUris: [stickerFileUri, ...current.stickerFileUris],
+      );
 
-    final next = [...packs];
-    next[index] = updated;
-    saveAll(next);
+      final next = [...packs];
+      next[index] = updated;
+      saveAll(next);
 
-    return updated;
+      AppLogger.i(
+        '[UserStickerPackService] Sticker added: pack=$packId, totalStickers=${updated.stickerFileUris.length}',
+      );
+      return updated;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to add sticker: pack=$packId',
+        e,
+        stackTrace,
+      );
+      return null;
+    }
   }
 
   UserStickerPack? renamePack({
@@ -126,28 +195,50 @@ class UserStickerPackService extends GetxService {
     required String packId,
     bool deleteFiles = false,
   }) {
-    final packs = getAll();
-    final index = packs.indexWhere((p) => p.id == packId);
-    if (index < 0) return false;
-
-    final pack = packs[index];
-    final next = [...packs]..removeAt(index);
-    saveAll(next);
-
-    if (deleteFiles) {
-      for (final uri in pack.stickerFileUris) {
-        try {
-          final file = File.fromUri(Uri.parse(uri));
-          if (file.existsSync()) {
-            file.deleteSync();
-          }
-        } catch (_) {
-          // ignore
-        }
+    AppLogger.i('[UserStickerPackService] Deleting pack: $packId, deleteFiles=$deleteFiles');
+    try {
+      final packs = getAll();
+      final index = packs.indexWhere((p) => p.id == packId);
+      if (index < 0) {
+        AppLogger.w('[UserStickerPackService] Pack not found for deletion: $packId');
+        return false;
       }
-    }
 
-    return true;
+      final pack = packs[index];
+      final next = [...packs]..removeAt(index);
+      saveAll(next);
+
+      if (deleteFiles) {
+        AppLogger.d('[UserStickerPackService] Deleting ${pack.stickerFileUris.length} files');
+        var deletedCount = 0;
+        for (final uri in pack.stickerFileUris) {
+          try {
+            final file = File.fromUri(Uri.parse(uri));
+            if (file.existsSync()) {
+              file.deleteSync();
+              deletedCount++;
+            }
+          } catch (e, stackTrace) {
+            AppLogger.w(
+              '[UserStickerPackService] Failed to delete file: $uri',
+              e,
+              stackTrace,
+            );
+          }
+        }
+        AppLogger.i('[UserStickerPackService] Deleted $deletedCount files');
+      }
+
+      AppLogger.i('[UserStickerPackService] Pack deleted successfully: $packId');
+      return true;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to delete pack: $packId',
+        e,
+        stackTrace,
+      );
+      return false;
+    }
   }
 
   UserStickerPack? removeStickerUri({
@@ -155,29 +246,54 @@ class UserStickerPackService extends GetxService {
     required String stickerFileUri,
     bool deleteFile = false,
   }) {
-    final packs = getAll();
-    final index = packs.indexWhere((p) => p.id == packId);
-    if (index < 0) return null;
-
-    final current = packs[index];
-    final nextUris = [...current.stickerFileUris]
-      ..removeWhere((u) => u == stickerFileUri);
-
-    final updated = current.copyWith(stickerFileUris: nextUris);
-    final next = [...packs];
-    next[index] = updated;
-    saveAll(next);
-
-    if (deleteFile) {
-      try {
-        final file = File.fromUri(Uri.parse(stickerFileUri));
-        if (file.existsSync()) file.deleteSync();
-      } catch (_) {
-        // ignore
+    AppLogger.d(
+      '[UserStickerPackService] Removing sticker from pack: $packId, deleteFile=$deleteFile',
+    );
+    try {
+      final packs = getAll();
+      final index = packs.indexWhere((p) => p.id == packId);
+      if (index < 0) {
+        AppLogger.w('[UserStickerPackService] Pack not found: $packId');
+        return null;
       }
-    }
 
-    return updated;
+      final current = packs[index];
+      final nextUris = [...current.stickerFileUris]
+        ..removeWhere((u) => u == stickerFileUri);
+
+      final updated = current.copyWith(stickerFileUris: nextUris);
+      final next = [...packs];
+      next[index] = updated;
+      saveAll(next);
+
+      if (deleteFile) {
+        try {
+          final file = File.fromUri(Uri.parse(stickerFileUri));
+          if (file.existsSync()) {
+            file.deleteSync();
+            AppLogger.d('[UserStickerPackService] File deleted: $stickerFileUri');
+          }
+        } catch (e, stackTrace) {
+          AppLogger.w(
+            '[UserStickerPackService] Failed to delete file: $stickerFileUri',
+            e,
+            stackTrace,
+          );
+        }
+      }
+
+      AppLogger.i(
+        '[UserStickerPackService] Sticker removed: pack=$packId, remainingStickers=${updated.stickerFileUris.length}',
+      );
+      return updated;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[UserStickerPackService] Failed to remove sticker: pack=$packId',
+        e,
+        stackTrace,
+      );
+      return null;
+    }
   }
 
   UserStickerPack? replaceStickerUri({

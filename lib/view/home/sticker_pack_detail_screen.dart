@@ -6,9 +6,10 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/model/sticker_pack.dart';
 import 'package:sticker_app/service/sticker/whatsapp_sticker_service.dart';
-import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 
 class StickerPackDetailScreen extends StatefulWidget {
   const StickerPackDetailScreen({super.key});
@@ -22,6 +23,8 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
   final _service = const WhatsappStickerService();
   late final StickerPack _pack;
   bool _isSending = false;
+  bool _isInstalled = false;
+  bool _isChecking = true;
 
   Future<void> _sharePack() async {
     final assets = _pack.allAssets;
@@ -65,6 +68,29 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
   void initState() {
     super.initState();
     _pack = Get.arguments as StickerPack;
+    _checkInstalledStatus();
+  }
+
+  Future<void> _checkInstalledStatus() async {
+    try {
+      final installed = await _service.isStickerPackInstalled(_pack.id);
+      if (mounted) {
+        setState(() {
+          _isInstalled = installed;
+          _isChecking = false;
+        });
+      }
+    } catch (e) {
+      AppLogger.e(
+        '[StickerPackDetailScreen] Failed to check installed status',
+        e,
+      );
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
+        });
+      }
+    }
   }
 
   @override
@@ -153,6 +179,96 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
   // ================= ADD TO WHATSAPP BUTTON =================
 
   Widget _buildAddButton() {
+    // Nếu đang kiểm tra trạng thái, hiển thị loading
+    if (_isChecking) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey.shade300,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                elevation: 0,
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'Đang kiểm tra...',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Nếu đã được thêm vào, hiển thị nút xám với text "Đã được thêm vào"
+    if (_isInstalled) {
+      return SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey.shade400,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(26),
+                ),
+                elevation: 0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.grey.shade700,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Has been added',
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Nếu chưa được thêm, hiển thị nút xanh bình thường
     return SafeArea(
       top: false,
       child: Padding(
@@ -222,10 +338,19 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
 
       if (result == 'cancelled') {
         return;
-      } else if (result == 'already_added') {
-        AppDialogs.showStickerAlreadyAdded();
-      } else {
-        AppDialogs.showStickerAddedSuccess();
+      } else if (result == 'already_added' || result == 'add_successful' || result == 'success') {
+        // Cập nhật trạng thái đã được thêm vào
+        if (mounted) {
+          setState(() {
+            _isInstalled = true;
+          });
+        }
+        
+        if (result == 'already_added') {
+          AppDialogs.showStickerAlreadyAdded();
+        } else {
+          AppDialogs.showStickerAddedSuccess();
+        }
       }
     } catch (e) {
       AppDialogs.showError(e.toString());

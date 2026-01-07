@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 class U2NetBackgroundRemover {
@@ -9,24 +10,41 @@ class U2NetBackgroundRemover {
   static const List<double> _mean = <double>[0.485, 0.456, 0.406];
   static const List<double> _std = <double>[0.229, 0.224, 0.225];
 
-  static const String _defaultModelAssetPath = 'assets/models/u2netp_320.tflite';
+  static const String _defaultModelAssetPath =
+      'assets/models/u2netp_320.tflite';
 
   static Interpreter? _interpreter;
   static String? _loadedModel;
 
-  static Future<Interpreter> _getInterpreter({String modelAssetPath = _defaultModelAssetPath}) async {
+  static Future<Interpreter> _getInterpreter({
+    String modelAssetPath = _defaultModelAssetPath,
+  }) async {
     if (_interpreter != null && _loadedModel == modelAssetPath) {
       return _interpreter!;
     }
 
     _interpreter?.close();
 
-    final options = InterpreterOptions()..threads = 4;
-    final interpreter = await Interpreter.fromAsset(modelAssetPath, options: options);
+    try {
+      AppLogger.d('[U2NetBackgroundRemover] Loading model: $modelAssetPath');
+      final options = InterpreterOptions()..threads = 4;
+      final interpreter = await Interpreter.fromAsset(
+        modelAssetPath,
+        options: options,
+      );
 
-    _interpreter = interpreter;
-    _loadedModel = modelAssetPath;
-    return interpreter;
+      _interpreter = interpreter;
+      _loadedModel = modelAssetPath;
+      AppLogger.i('[U2NetBackgroundRemover] Model loaded successfully');
+      return interpreter;
+    } catch (e, stackTrace) {
+      AppLogger.e(
+        '[U2NetBackgroundRemover] Failed to load model: $modelAssetPath',
+        e,
+        stackTrace,
+      );
+      rethrow;
+    }
   }
 
   static Future<Uint8List> removeBackgroundFromBytes(
@@ -37,13 +55,23 @@ class U2NetBackgroundRemover {
     double maskLevelHigh = 0.90,
     double maskGamma = 0.70,
   }) async {
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Starting background removal: inputSize=${imageBytes.length} bytes',
+    );
+
     final decoded = img.decodeImage(imageBytes);
     if (decoded == null) {
+      AppLogger.e('[U2NetBackgroundRemover] Cannot decode image');
       throw Exception('Cannot decode image');
     }
 
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Image decoded: ${decoded.width}x${decoded.height}',
+    );
+
     final interpreter = await _getInterpreter(modelAssetPath: modelAssetPath);
 
+    // Resize về input size (model yêu cầu chính xác 320x320)
     final resizedForModel = img.copyResize(
       decoded,
       width: _inputSize,
@@ -53,7 +81,9 @@ class U2NetBackgroundRemover {
 
     final inputShape = interpreter.getInputTensor(0).shape;
     final outputShape = interpreter.getOutputTensor(0).shape;
-    print('U2Net inputShape=$inputShape outputShape=$outputShape');
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Model shapes: input=$inputShape, output=$outputShape',
+    );
 
     // Use nested Lists for I/O to avoid reshape/view issues where output buffer
     // is not populated.
@@ -61,10 +91,7 @@ class U2NetBackgroundRemover {
       1,
       (_) => List.generate(
         _inputSize,
-        (_) => List.generate(
-          _inputSize,
-          (_) => List<double>.filled(3, 0.0),
-        ),
+        (_) => List.generate(_inputSize, (_) => List<double>.filled(3, 0.0)),
       ),
     );
 
@@ -88,14 +115,17 @@ class U2NetBackgroundRemover {
       1,
       (_) => List.generate(
         outH,
-        (_) => List.generate(
-          outW,
-          (_) => List<double>.filled(1, 0.0),
-        ),
+        (_) => List.generate(outW, (_) => List<double>.filled(1, 0.0)),
       ),
     );
 
+    AppLogger.d('[U2NetBackgroundRemover] Running model inference...');
+    final stopwatch = Stopwatch()..start();
     interpreter.run(inputTensor, outputTensor);
+    stopwatch.stop();
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Inference completed in ${stopwatch.elapsedMilliseconds}ms',
+    );
 
     final out0 = Float32List(outH * outW);
     var o = 0;
@@ -115,6 +145,7 @@ class U2NetBackgroundRemover {
     // If output looks like logits, apply sigmoid before scaling.
     final looksLikeLogits = minV < 0.0 || maxV > 1.0;
     if (looksLikeLogits) {
+      AppLogger.d('[U2NetBackgroundRemover] Applying sigmoid to logits');
       for (var j = 0; j < out0.length; j++) {
         final v = out0[j];
         out0[j] = 1.0 / (1.0 + math.exp(-v));
@@ -127,7 +158,9 @@ class U2NetBackgroundRemover {
       }
     }
 
-    print('U2Net mask min=$minV max=$maxV logits=$looksLikeLogits');
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Mask stats: min=$minV, max=$maxV, logits=$looksLikeLogits',
+    );
 
     final denom = (maxV - minV).abs() < 1e-12 ? 1.0 : (maxV - minV);
 
@@ -143,15 +176,22 @@ class U2NetBackgroundRemover {
     for (var y = 0; y < outH; y++) {
       for (var x = 0; x < outW; x++) {
         final n = ((out0[idx++] - minV) / denom);
-        final leveled = ((n - maskLevelLow) / (maskLevelHigh - maskLevelLow)).clamp(0.0, 1.0);
-        final refined = maskGamma == 1.0 ? leveled : math.pow(leveled, maskGamma).toDouble();
+        final leveled = ((n - maskLevelLow) / (maskLevelHigh - maskLevelLow))
+            .clamp(0.0, 1.0);
+        final refined =
+            maskGamma == 1.0
+                ? leveled
+                : math.pow(leveled, maskGamma).toDouble();
         final dx = (x - (outW ~/ 2)).abs();
         final dy = (y - (outH ~/ 2)).abs();
         if (dx <= centerRadius && dy <= centerRadius) {
           centerSum += refined;
           centerCount++;
         }
-        if (x < borderWidth || y < borderWidth || x >= outW - borderWidth || y >= outH - borderWidth) {
+        if (x < borderWidth ||
+            y < borderWidth ||
+            x >= outW - borderWidth ||
+            y >= outH - borderWidth) {
           borderSum += refined;
           borderCount++;
         }
@@ -165,7 +205,9 @@ class U2NetBackgroundRemover {
     final borderMean = borderCount == 0 ? 0.0 : (borderSum / borderCount);
     final shouldInvert = centerMean < borderMean;
 
-    print('U2Net centerMean=$centerMean borderMean=$borderMean invert=$shouldInvert');
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Mask analysis: centerMean=$centerMean, borderMean=$borderMean, invert=$shouldInvert',
+    );
 
     if (shouldInvert) {
       for (var y = 0; y < outH; y++) {
@@ -184,7 +226,14 @@ class U2NetBackgroundRemover {
       interpolation: img.Interpolation.linear,
     );
 
-    final out = img.Image(width: decoded.width, height: decoded.height, numChannels: 4);
+    AppLogger.d(
+      '[U2NetBackgroundRemover] Applying mask to original image: ${decoded.width}x${decoded.height}',
+    );
+    final out = img.Image(
+      width: decoded.width,
+      height: decoded.height,
+      numChannels: 4,
+    );
     for (var y = 0; y < decoded.height; y++) {
       for (var x = 0; x < decoded.width; x++) {
         final src = decoded.getPixel(x, y);
@@ -197,16 +246,28 @@ class U2NetBackgroundRemover {
       }
     }
 
-    return Uint8List.fromList(img.encodePng(out));
+    final result = Uint8List.fromList(img.encodePng(out));
+    AppLogger.i(
+      '[U2NetBackgroundRemover] Background removal completed: output size=${result.length} bytes',
+    );
+    return result;
   }
 
-  static Future<Uint8List> removeBackground(img.Image image, {String modelAssetPath = _defaultModelAssetPath}) {
-    return removeBackgroundFromBytes(Uint8List.fromList(img.encodePng(image)), modelAssetPath: modelAssetPath);
+  static Future<Uint8List> removeBackground(
+    img.Image image, {
+    String modelAssetPath = _defaultModelAssetPath,
+  }) {
+    return removeBackgroundFromBytes(
+      Uint8List.fromList(img.encodePng(image)),
+      modelAssetPath: modelAssetPath,
+    );
   }
 
   static Future<void> dispose() async {
+    AppLogger.d('[U2NetBackgroundRemover] Disposing interpreter');
     _interpreter?.close();
     _interpreter = null;
     _loadedModel = null;
+    AppLogger.i('[U2NetBackgroundRemover] Interpreter disposed');
   }
 }

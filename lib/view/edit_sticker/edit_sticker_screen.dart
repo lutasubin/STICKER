@@ -28,7 +28,6 @@ class _EditStickerScreenState extends State<EditStickerScreen>
 
   late final UserStickerPack _pack;
   String? _replaceStickerUri;
-  bool _goToUserPackDetail = false;
   bool _isNewPack = false;
 
   bool _showPainter = true;
@@ -44,7 +43,6 @@ class _EditStickerScreenState extends State<EditStickerScreen>
 
     _pack = args['pack'] as UserStickerPack;
     _replaceStickerUri = args['replaceStickerUri'] as String?;
-    _goToUserPackDetail = args['goToUserPackDetail'] == true;
     _isNewPack = args['isNewPack'] == true;
 
     _controller =
@@ -95,6 +93,8 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       final fileUri = Uri.file(_stickerFile.path).toString();
 
       final service = Get.find<UserStickerPackService>();
+      UserStickerPack updatedPack;
+
       if (_replaceStickerUri != null) {
         service.replaceStickerUri(
           packId: _pack.id,
@@ -102,16 +102,16 @@ class _EditStickerScreenState extends State<EditStickerScreen>
           newStickerFileUri: fileUri,
           deleteOldFile: true,
         );
+        // Lấy pack đã được update
+        updatedPack = service.getById(_pack.id)!;
       } else {
         if (_isNewPack) {
           final committed = service.commitPack(
             _pack.copyWith(stickerFileUris: [fileUri]),
           );
+          // Navigate về pack detail
           Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(
-            AppRoutes.userPackDetail,
-            arguments: committed,
-          );
+          Get.toNamed(AppRoutes.userPackDetail, arguments: committed);
 
           AppDialogs.showSuccess(
             'success_saved_to_pack'.trParams({'title': committed.title}),
@@ -120,22 +120,18 @@ class _EditStickerScreenState extends State<EditStickerScreen>
         }
 
         service.addStickerUri(packId: _pack.id, stickerFileUri: fileUri);
+        // Lấy pack đã được update
+        updatedPack = service.getById(_pack.id)!;
       }
 
       PaintingBinding.instance.imageCache.evict(FileImage(_stickerFile));
-      await _loadStickerAsBackground();
 
-      if (_goToUserPackDetail) {
-        Get.back(closeOverlays: false);
-        Get.back(closeOverlays: false);
-      } else {
-        Get.offAllNamed(
-          AppRoutes.mySticker,
-        );
-      }
+      // Luôn navigate về pack detail sau khi create
+      Get.offAllNamed(AppRoutes.mySticker);
+      Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
 
       AppDialogs.showSuccess(
-        'success_saved_to_pack'.trParams({'title': _pack.title}),
+        'success_saved_to_pack'.trParams({'title': updatedPack.title}),
       );
     } catch (e) {
       if (mounted) AppDialogs.showError(e.toString());

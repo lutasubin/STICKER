@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/model/sticker_pack.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 
@@ -11,17 +12,57 @@ class WhatsappStickerService {
 
   Future<bool> isWhatsAppInstalled() async {
     try {
+      AppLogger.d('[WhatsappStickerService] Checking if WhatsApp is installed...');
       final installed = await _channel.invokeMethod<bool>(
         'isWhatsAppInstalled',
       );
-      return installed ?? false;
-    } on PlatformException {
+      final result = installed ?? false;
+      AppLogger.i('[WhatsappStickerService] WhatsApp installed: $result');
+      return result;
+    } on PlatformException catch (e, stackTrace) {
+      AppLogger.e(
+        '[WhatsappStickerService] Failed to check WhatsApp installation',
+        e,
+        stackTrace,
+      );
+      return false;
+    }
+  }
+
+  /// Check if a sticker pack is already installed in WhatsApp
+  Future<bool> isStickerPackInstalled(String identifier) async {
+    try {
+      AppLogger.d(
+        '[WhatsappStickerService] Checking if sticker pack is installed: $identifier',
+      );
+      final installed = await _channel.invokeMethod<bool>(
+        'isStickerPackInstalled',
+        {'identifier': identifier},
+      );
+      final result = installed ?? false;
+      AppLogger.i(
+        '[WhatsappStickerService] Sticker pack installed: $identifier = $result',
+      );
+      return result;
+    } on PlatformException catch (e, stackTrace) {
+      AppLogger.e(
+        '[WhatsappStickerService] Failed to check sticker pack installation: $identifier',
+        e,
+        stackTrace,
+      );
       return false;
     }
   }
 
   /// Build payload and request Android to add the sticker pack to WhatsApp.
   Future<String> addPack(StickerPack pack) async {
+    AppLogger.i(
+      '[WhatsappStickerService] Adding pack to WhatsApp: ${pack.id} (${pack.title})',
+    );
+    AppLogger.d(
+      '[WhatsappStickerService] Pack details: itemCount=${pack.itemCount}, isAnimated=${pack.isAnimated}, folderPath=${pack.folderPath}',
+    );
+
     final stickers = <String, List<String>>{};
     for (var i = 0; i < pack.itemCount; i++) {
       final assetPath = '${pack.folderPath}/${i + 1}.webp';
@@ -43,20 +84,38 @@ class WhatsappStickerService {
       'isAnimated': pack.isAnimated,
     };
 
+    AppLogger.d(
+      '[WhatsappStickerService] Sending to WhatsApp: identifier=${pack.id}, stickerCount=${stickers.length}',
+    );
+
     try {
       final result = await _channel.invokeMethod<String>(
         'sendToWhatsApp',
         args,
       );
-      return result ?? 'success';
-    } on PlatformException catch (e) {
+      final finalResult = result ?? 'success';
+      AppLogger.i(
+        '[WhatsappStickerService] Pack added successfully: ${pack.id}, result=$finalResult',
+      );
+      return finalResult;
+    } on PlatformException catch (e, stackTrace) {
       // validation_error từ WhatsApp
       if (e.code == 'validation_error') {
+        AppLogger.e(
+          '[WhatsappStickerService] Validation error for pack: ${pack.id}',
+          e,
+          stackTrace,
+        );
         throw PlatformException(
           code: e.code,
           message: e.message ?? 'Sticker pack không hợp lệ.',
         );
       }
+      AppLogger.e(
+        '[WhatsappStickerService] Failed to add pack: ${pack.id}',
+        e,
+        stackTrace,
+      );
       throw PlatformException(
         code: e.code,
         message: e.message ?? 'Không thể thêm sticker pack.',
@@ -71,8 +130,19 @@ class WhatsappStickerService {
   /// - Android native validator requires 3..30 stickers.
   /// - `file://` URIs are supported by the native code in this project.
   Future<String> addUserPack(UserStickerPack pack) async {
+    AppLogger.i(
+      '[WhatsappStickerService] Adding user pack to WhatsApp: ${pack.id} (${pack.title})',
+    );
+
     final stickerUris = pack.stickerFileUris;
+    AppLogger.d(
+      '[WhatsappStickerService] User pack sticker count: ${stickerUris.length}',
+    );
+
     if (stickerUris.length < 3 || stickerUris.length > 30) {
+      AppLogger.w(
+        '[WhatsappStickerService] Invalid sticker count: ${stickerUris.length} (required: 3-30)',
+      );
       throw PlatformException(
         code: 'validation_error',
         message: 'Sticker pack phải có từ 3 đến 30 sticker.',
@@ -99,19 +169,37 @@ class WhatsappStickerService {
       'isAnimated': false,
     };
 
+    AppLogger.d(
+      '[WhatsappStickerService] Sending user pack to WhatsApp: identifier=${pack.id}, stickerCount=${stickers.length}',
+    );
+
     try {
       final result = await _channel.invokeMethod<String>(
         'sendToWhatsApp',
         args,
       );
-      return result ?? 'success';
-    } on PlatformException catch (e) {
+      final finalResult = result ?? 'success';
+      AppLogger.i(
+        '[WhatsappStickerService] User pack added successfully: ${pack.id}, result=$finalResult',
+      );
+      return finalResult;
+    } on PlatformException catch (e, stackTrace) {
       if (e.code == 'validation_error') {
+        AppLogger.e(
+          '[WhatsappStickerService] Validation error for user pack: ${pack.id}',
+          e,
+          stackTrace,
+        );
         throw PlatformException(
           code: e.code,
           message: e.message ?? 'Sticker pack không hợp lệ.',
         );
       }
+      AppLogger.e(
+        '[WhatsappStickerService] Failed to add user pack: ${pack.id}',
+        e,
+        stackTrace,
+      );
       throw PlatformException(
         code: e.code,
         message: e.message ?? 'Không thể thêm sticker pack.',

@@ -3,11 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
+import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
 import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/service/sticker/whatsapp_sticker_service.dart';
-import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_export_button.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_header.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_sticker_grid.dart';
@@ -24,11 +25,36 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
   final _whatsApp = const WhatsappStickerService();
   bool _isSending = false;
   bool _changed = false;
+  bool _isInstalled = false;
+  bool _isChecking = true;
 
   @override
   void initState() {
     super.initState();
     _pack = Get.arguments as UserStickerPack;
+    _checkInstalledStatus();
+  }
+
+  Future<void> _checkInstalledStatus() async {
+    try {
+      final installed = await _whatsApp.isStickerPackInstalled(_pack.id);
+      if (mounted) {
+        setState(() {
+          _isInstalled = installed;
+          _isChecking = false;
+        });
+      }
+    } catch (e) {
+      AppLogger.e(
+        '[UserPackDetailScreen] Failed to check installed status',
+        e,
+      );
+      if (mounted) {
+        setState(() {
+          _isChecking = false;
+        });
+      }
+    }
   }
 
   Future<void> _sharePack() async {
@@ -87,10 +113,19 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
 
       if (result == 'cancelled') {
         return;
-      } else if (result == 'already_added') {
-        AppDialogs.showStickerAlreadyAdded();
-      } else {
-        AppDialogs.showStickerAddedSuccess();
+      } else if (result == 'already_added' || result == 'add_successful' || result == 'success') {
+        // Cập nhật trạng thái đã được thêm vào
+        if (mounted) {
+          setState(() {
+            _isInstalled = true;
+          });
+        }
+        
+        if (result == 'already_added') {
+          AppDialogs.showStickerAlreadyAdded();
+        } else {
+          AppDialogs.showStickerAddedSuccess();
+        }
       }
     } catch (e) {
       AppDialogs.showError(e.toString());
@@ -202,7 +237,12 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
               onAddSticker: _addSticker,
               onOpenSticker: _openStickerViewer,
             ),
-            UserPackExportButton(isSending: _isSending, onPressed: _exportPack),
+            UserPackExportButton(
+              isSending: _isSending,
+              onPressed: _exportPack,
+              isInstalled: _isInstalled,
+              isChecking: _isChecking,
+            ),
           ],
         ),
       ),

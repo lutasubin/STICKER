@@ -49,6 +49,7 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_painter_v2: ^2.1.0+1
   tflite_flutter: ^0.12.1
+  logger: ^2.6.2
   
 
 dev_dependencies:

@@ -32,7 +32,10 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(milliseconds: 2500),
     );
 
-    _initializeApp();
+    // Đợi frame đầu tiên để context sẵn sàng
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initializeApp();
+    });
   }
 
   Future<void> _initializeApp() async {
