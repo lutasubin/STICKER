@@ -6,6 +6,9 @@ import 'package:flutter_painter_v2/flutter_painter.dart';
 import 'package:get/get.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
+import 'package:sticker_app/model/user_sticker_pack.dart';
+import 'package:sticker_app/router/router.dart';
+import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/view/edit_sticker/text_edit_screen.dart';
 
 enum EditTab { text, sticker, background }
@@ -23,6 +26,11 @@ class _EditStickerScreenState extends State<EditStickerScreen>
   late final PainterController _controller;
   EditTab _selectedTab = EditTab.text;
 
+  late final UserStickerPack _pack;
+  String? _replaceStickerUri;
+  bool _goToUserPackDetail = false;
+  bool _isNewPack = false;
+
   bool _showPainter = true;
 
   bool _saving = false;
@@ -33,6 +41,11 @@ class _EditStickerScreenState extends State<EditStickerScreen>
     final args = Get.arguments as Map;
     final stickerUri = args['stickerUri'] as String;
     _stickerFile = File.fromUri(Uri.parse(stickerUri));
+
+    _pack = args['pack'] as UserStickerPack;
+    _replaceStickerUri = args['replaceStickerUri'] as String?;
+    _goToUserPackDetail = args['goToUserPackDetail'] == true;
+    _isNewPack = args['isNewPack'] == true;
 
     _controller =
         PainterController()
@@ -79,10 +92,51 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       final webpBytes = await _encodeWebp(pngBytes);
       await _stickerFile.writeAsBytes(webpBytes, flush: true);
 
+      final fileUri = Uri.file(_stickerFile.path).toString();
+
+      final service = Get.find<UserStickerPackService>();
+      if (_replaceStickerUri != null) {
+        service.replaceStickerUri(
+          packId: _pack.id,
+          oldStickerFileUri: _replaceStickerUri!,
+          newStickerFileUri: fileUri,
+          deleteOldFile: true,
+        );
+      } else {
+        if (_isNewPack) {
+          final committed = service.commitPack(
+            _pack.copyWith(stickerFileUris: [fileUri]),
+          );
+          Get.offAllNamed(AppRoutes.mySticker);
+          Get.toNamed(
+            AppRoutes.userPackDetail,
+            arguments: committed,
+          );
+
+          AppDialogs.showSuccess(
+            'success_saved_to_pack'.trParams({'title': committed.title}),
+          );
+          return;
+        }
+
+        service.addStickerUri(packId: _pack.id, stickerFileUri: fileUri);
+      }
+
       PaintingBinding.instance.imageCache.evict(FileImage(_stickerFile));
       await _loadStickerAsBackground();
 
-      AppDialogs.showSuccess('edit_sticker_saved'.tr);
+      if (_goToUserPackDetail) {
+        Get.back(closeOverlays: false);
+        Get.back(closeOverlays: false);
+      } else {
+        Get.offAllNamed(
+          AppRoutes.mySticker,
+        );
+      }
+
+      AppDialogs.showSuccess(
+        'success_saved_to_pack'.trParams({'title': _pack.title}),
+      );
     } catch (e) {
       if (mounted) AppDialogs.showError(e.toString());
     } finally {
@@ -101,8 +155,9 @@ class _EditStickerScreenState extends State<EditStickerScreen>
         quality: q,
         keepExif: false,
       );
-      if (best == null || out.length < best.length)
+      if (best == null || out.length < best.length) {
         best = Uint8List.fromList(out);
+      }
       if (out.length <= maxBytes) return Uint8List.fromList(out);
     }
     if (best != null) {

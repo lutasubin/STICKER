@@ -558,31 +558,33 @@ class _TextEditScreenState extends State<TextEditScreen> {
                         height: size,
                         decoration: BoxDecoration(
                         ),
-                        child: Theme(
-                          data: Theme.of(context).copyWith(
-                            colorScheme: Theme.of(context).colorScheme.copyWith(
-                                  primary: const Color(0xFF2196F3),
-                                ),
-                          ),
-                          child: FlutterPainter(
-                            controller: widget.controller,
-                            onDrawableDeleted: (d) {
-                              if (d is! TextDrawable) return;
-                              if (!mounted) return;
-                              if (identical(d, _editingDrawable)) {
-                                _editingDrawable = null;
-                                _syncingFromSelection = true;
-                                _textController.clear();
-                                _syncingFromSelection = false;
-                                _textFocusNode.unfocus();
-                              }
-                            },
-                            onSelectedObjectDrawableChanged: (d) {
-                              if (!mounted) return;
-                              if (d is TextDrawable) {
-                                _editingDrawable = d;
-                              }
-                            },
+                        child: _CheckerboardBackground(
+                          child: Theme(
+                            data: Theme.of(context).copyWith(
+                              colorScheme: Theme.of(context).colorScheme.copyWith(
+                                    primary: const Color(0xFF2196F3),
+                                  ),
+                            ),
+                            child: FlutterPainter(
+                              controller: widget.controller,
+                              onDrawableDeleted: (d) {
+                                if (d is! TextDrawable) return;
+                                if (!mounted) return;
+                                if (identical(d, _editingDrawable)) {
+                                  _editingDrawable = null;
+                                  _syncingFromSelection = true;
+                                  _textController.clear();
+                                  _syncingFromSelection = false;
+                                  _textFocusNode.unfocus();
+                                }
+                              },
+                              onSelectedObjectDrawableChanged: (d) {
+                                if (!mounted) return;
+                                if (d is TextDrawable) {
+                                  _editingDrawable = d;
+                                }
+                              },
+                            ),
                           ),
                         ),
                       );
@@ -1064,5 +1066,55 @@ class _EffectsTab extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _CheckerboardBackground extends StatelessWidget {
+  const _CheckerboardBackground({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _CheckerboardPainter(
+        light: const Color(0xFFF3F3F3),
+        dark: const Color(0xFFE3E3E3),
+        squareSize: 24,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _CheckerboardPainter extends CustomPainter {
+  _CheckerboardPainter({
+    required this.light,
+    required this.dark,
+    required this.squareSize,
+  });
+
+  final Color light;
+  final Color dark;
+  final double squareSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    for (double y = 0; y < size.height; y += squareSize) {
+      for (double x = 0; x < size.width; x += squareSize) {
+        final isDark =
+            ((x / squareSize).floor() + (y / squareSize).floor()) % 2 == 1;
+        paint.color = isDark ? dark : light;
+        canvas.drawRect(Rect.fromLTWH(x, y, squareSize, squareSize), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CheckerboardPainter oldDelegate) {
+    return oldDelegate.light != light ||
+        oldDelegate.dark != dark ||
+        oldDelegate.squareSize != squareSize;
   }
 }

@@ -27,20 +27,29 @@ class CropAppBar extends StatelessWidget implements PreferredSizeWidget {
         style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
       ),
       actions: [
-        TextButton(
-          onPressed: saving ? null : onNext,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
           child: saving
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text(
-                  'Next',
-                  style: TextStyle(
-                    color: Color(0xFF00C979),
-                    fontWeight: FontWeight.w700,
+              ? Container(
+                  margin: const EdgeInsets.only(right: 16),
+                  child: const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00C979)),
+                    ),
                   ),
+                )
+              : TextButton(
+                  onPressed: onNext,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF00C979),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  child: const Text('Next'),
                 ),
         ),
       ],

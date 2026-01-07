@@ -193,8 +193,12 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
 
   Future<void> _confirmSelection() async {
     final asset = _selectedAsset;
-    if (asset == null) return;
+    if (asset == null) {
+      debugPrint('_confirmSelection: no asset selected');
+      return;
+    }
 
+    debugPrint('_confirmSelection: resolving asset ${asset.id}');
     final file = await _resolveAssetFile(asset);
     if (file == null) {
       Get.snackbar(
@@ -205,6 +209,7 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
       return;
     }
 
+    debugPrint('_confirmSelection: navigating to CropScreen with file ${file.path}');
     Get.toNamed(
       AppRoutes.createStickerCrop,
       arguments: {

@@ -11,7 +11,6 @@ import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 import 'package:sticker_app/view/create_sticker/widgets/crop_app_bar.dart';
 import 'package:sticker_app/view/create_sticker/widgets/crop_editor.dart';
@@ -54,22 +53,48 @@ class _CropScreenState extends State<CropScreen> {
     if (_saving) return;
     if (_mode == mode) return;
 
-    setState(() => _mode = mode);
+    try {
+      setState(() => _mode = mode);
 
-    // Force editor to apply new aspect ratio by resetting after rebuild.
-    await Future<void>.delayed(Duration.zero);
-    _editorKey.currentState?.reset();
+      // Force editor to apply new aspect ratio by resetting after rebuild.
+      await Future<void>.delayed(Duration.zero);
+      
+      if (_editorKey.currentState != null) {
+        _editorKey.currentState?.reset();
+      } else {
+        debugPrint('Warning: editorKey.currentState is null in _setMode');
+      }
+    } catch (e, st) {
+      debugPrint('_setMode error: $e');
+      debugPrint(st.toString());
+      if (mounted) {
+        AppDialogs.showError('Failed to change crop mode: $e');
+      }
+    }
   }
 
   @override
   void initState() {
     super.initState();
-    final args = Get.arguments as Map;
-    _pack = args['pack'] as UserStickerPack;
-    _imageFile = args['imageFile'] as File;
-    _replaceStickerUri = args['replaceStickerUri'] as String?;
-    _goToUserPackDetail = args['goToUserPackDetail'] == true;
-    _isNewPack = args['isNewPack'] == true;
+    try {
+      final args = Get.arguments;
+      if (args is! Map) {
+        throw Exception('Expected Map arguments, got ${args.runtimeType}: $args');
+      }
+      _pack = args['pack'] as UserStickerPack;
+      _imageFile = args['imageFile'] as File;
+      _replaceStickerUri = args['replaceStickerUri'] as String?;
+      _goToUserPackDetail = args['goToUserPackDetail'] == true;
+      _isNewPack = args['isNewPack'] == true;
+      debugPrint('CropScreen initState: pack=${_pack.title}, imageFile=${_imageFile.path}, replaceStickerUri=$_replaceStickerUri, goToUserPackDetail=$_goToUserPackDetail, isNewPack=$_isNewPack');
+    } catch (e, st) {
+      debugPrint('CropScreen initState error: $e');
+      debugPrint(st.toString());
+      if (mounted) {
+        AppDialogs.showError('Failed to initialize CropScreen: $e');
+        Get.back();
+      }
+    }
   }
 
   Future<void> _onNext() async {
@@ -77,31 +102,51 @@ class _CropScreenState extends State<CropScreen> {
     setState(() => _saving = true);
 
     try {
+      debugPrint('_onNext: starting, mode=$_mode');
+      
+      // Show immediate feedback
+      if (mounted) {
+        setState(() {});
+      }
+      
+      // Small delay to allow UI to update
+      await Future.delayed(const Duration(milliseconds: 100));
+      
       final editorState = _editorKey.currentState;
       final cropRect = editorState?.getCropRect();
+      debugPrint('_onNext: cropRect=$cropRect');
 
       final Uint8List inputBytes;
       if (_mode == _CropMode.autoCutout) {
+        debugPrint('_onNext: using auto cutout');
         inputBytes = await _removeBgCutout();
       } else {
+        debugPrint('_onNext: reading image file');
         inputBytes = await _imageFile.readAsBytes();
       }
+      debugPrint('_onNext: inputBytes length=${inputBytes.length}');
 
       final decoded = img.decodeImage(inputBytes);
       if (decoded == null) {
         throw Exception('error_cannot_read_image'.tr);
       }
+      debugPrint('_onNext: decoded image ${decoded.width}x${decoded.height}');
 
       final img.Image cropped =
           _mode == _CropMode.autoCutout ? decoded : _cropByRect(decoded, cropRect);
+      debugPrint('_onNext: cropped image ${cropped.width}x${cropped.height}');
 
+      debugPrint('_onNext: rendering to sticker canvas');
       final canvas = _renderToStickerCanvas(
         cropped,
         applyCircle: _mode == _CropMode.circle,
         applyHeart: _mode == _CropMode.heart,
       );
+      debugPrint('_onNext: canvas rendered ${canvas.width}x${canvas.height}');
 
+      debugPrint('_onNext: encoding webp');
       final webpBytes = await _encodeWebp(canvas);
+      debugPrint('_onNext: webp encoded size=${webpBytes.length}');
 
       final dir = await getApplicationDocumentsDirectory();
       final outDir = Directory('${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${_pack.id}');
@@ -113,51 +158,29 @@ class _CropScreenState extends State<CropScreen> {
         '${outDir.path}${Platform.pathSeparator}${DateTime.now().millisecondsSinceEpoch}.webp',
       );
       await outFile.writeAsBytes(webpBytes, flush: true);
+      debugPrint('_onNext: file written to ${outFile.path}');
 
       final fileUri = Uri.file(outFile.path).toString();
 
-      final service = Get.find<UserStickerPackService>();
-      if (_replaceStickerUri != null) {
-        service.replaceStickerUri(
-          packId: _pack.id,
-          oldStickerFileUri: _replaceStickerUri!,
-          newStickerFileUri: fileUri,
-          deleteOldFile: true,
-        );
-      } else {
-        if (_isNewPack) {
-          final committed = service.commitPack(
-            _pack.copyWith(stickerFileUris: [fileUri]),
-          );
-          Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(
-            AppRoutes.userPackDetail,
-            arguments: committed,
-          );
-
-          AppDialogs.showSuccess(
-            'success_saved_to_pack'.trParams({'title': committed.title}),
-          );
-          return;
-        }
-
-        service.addStickerUri(packId: _pack.id, stickerFileUri: fileUri);
-      }
-
-
-      if (_goToUserPackDetail) {
-        Get.back(closeOverlays: false);
-        Get.back(closeOverlays: false);
-      } else {
-        Get.offAllNamed(
-          AppRoutes.mySticker,
-        );
-      }
-
-      AppDialogs.showSuccess(
-        'success_saved_to_pack'.trParams({'title': _pack.title}),
+      debugPrint('_onNext: navigating to edit sticker');
+      
+      // Smooth transition with delay
+      await Future.delayed(const Duration(milliseconds: 200));
+      
+      Get.toNamed(
+        AppRoutes.editSticker,
+        arguments: {
+          'stickerUri': fileUri,
+          'pack': _pack,
+          'replaceStickerUri': _replaceStickerUri,
+          'goToUserPackDetail': _goToUserPackDetail,
+          'isNewPack': _isNewPack,
+        },
       );
-    } catch (e) {
+      debugPrint('_onNext: navigation completed');
+    } catch (e, st) {
+      debugPrint('_onNext ERROR: $e');
+      debugPrint(st.toString());
       if (mounted) {
         AppDialogs.showError(e.toString());
       }
@@ -356,70 +379,108 @@ class _CropScreenState extends State<CropScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final cropAspectRatio = switch (_mode) {
-      _CropMode.square => 1.0,
-      _CropMode.circle => 1.0,
-      _CropMode.heart => 1.0,
-      _CropMode.manual => null,
-      _CropMode.autoCutout => null,
-    };
-    final EditorCropLayerPainter cropLayerPainter = switch (_mode) {
-      _CropMode.circle => CircleCropLayerPainter(),
-      _CropMode.heart => HeartCropLayerPainter(),
-      _ => const EditorCropLayerPainter(),
-    };
+    try {
+      final cropAspectRatio = switch (_mode) {
+        _CropMode.square => 1.0,
+        _CropMode.circle => 1.0,
+        _CropMode.heart => 1.0,
+        _CropMode.manual => null,
+        _CropMode.autoCutout => null,
+      };
+      
+      EditorCropLayerPainter? cropLayerPainter;
+      try {
+        cropLayerPainter = switch (_mode) {
+          _CropMode.circle => CircleCropLayerPainter(),
+          _CropMode.heart => HeartCropLayerPainter(),
+          _ => const EditorCropLayerPainter(),
+        };
+      } catch (e) {
+        debugPrint('Error creating crop layer painter: $e');
+        cropLayerPainter = const EditorCropLayerPainter();
+      }
 
-    return Scaffold(
-      appBar: CropAppBar(
-        onBack: Get.back,
-        onNext: _onNext,
-        saving: _saving,
-      ),
-      body: Column(
-        children: [
-          CropEditor(
-            imageFile: _imageFile,
-            modeKey: _mode,
-            editorKey: _editorKey,
-            cropAspectRatio: cropAspectRatio,
-            cropLayerPainter: cropLayerPainter,
+      return Scaffold(
+        appBar: CropAppBar(
+          onBack: Get.back,
+          onNext: _onNext,
+          saving: _saving,
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: CropEditor(
+                imageFile: _imageFile,
+                modeKey: _mode,
+                editorKey: _editorKey,
+                cropAspectRatio: cropAspectRatio,
+                cropLayerPainter: cropLayerPainter,
+              ),
+            ),
+            CropModeSelector(
+              items: [
+                CropModeItemData(
+                  iconAsset: 'assets/icons/AI_cut.svg',
+                  label: 'crop_mode_auto'.tr,
+                  selected: _mode == _CropMode.autoCutout,
+                  onTap: () => _setMode(_CropMode.autoCutout),
+                ),
+                CropModeItemData(
+                  iconAsset: 'assets/icons/Crop.svg',
+                  label: 'crop_mode_manual'.tr,
+                  selected: _mode == _CropMode.manual,
+                  onTap: () => _setMode(_CropMode.manual),
+                ),
+                CropModeItemData(
+                  iconAsset: 'assets/icons/square.svg',
+                  label: 'crop_mode_square'.tr,
+                  selected: _mode == _CropMode.square,
+                  onTap: () => _setMode(_CropMode.square),
+                ),
+                CropModeItemData(
+                  iconAsset: 'assets/icons/Circle.svg',
+                  label: 'crop_mode_circle'.tr,
+                  selected: _mode == _CropMode.circle,
+                  onTap: () => _setMode(_CropMode.circle),
+                ),
+                CropModeItemData(
+                  iconAsset: 'assets/icons/heart.svg',
+                  label: 'crop_mode_heart'.tr,
+                  selected: _mode == _CropMode.heart,
+                  onTap: () => _setMode(_CropMode.heart),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    } catch (e, st) {
+      debugPrint('CropScreen build error: $e');
+      debugPrint(st.toString());
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            onPressed: Get.back,
+            icon: const Icon(Icons.arrow_back),
           ),
-          CropModeSelector(
-            items: [
-              CropModeItemData(
-                iconAsset: 'assets/icons/AI_cut.svg',
-                label: 'crop_mode_auto'.tr,
-                selected: _mode == _CropMode.autoCutout,
-                onTap: () => _setMode(_CropMode.autoCutout),
-              ),
-              CropModeItemData(
-                iconAsset: 'assets/icons/Crop.svg',
-                label: 'crop_mode_manual'.tr,
-                selected: _mode == _CropMode.manual,
-                onTap: () => _setMode(_CropMode.manual),
-              ),
-              CropModeItemData(
-                iconAsset: 'assets/icons/square.svg',
-                label: 'crop_mode_square'.tr,
-                selected: _mode == _CropMode.square,
-                onTap: () => _setMode(_CropMode.square),
-              ),
-              CropModeItemData(
-                iconAsset: 'assets/icons/Circle.svg',
-                label: 'crop_mode_circle'.tr,
-                selected: _mode == _CropMode.circle,
-                onTap: () => _setMode(_CropMode.circle),
-              ),
-              CropModeItemData(
-                iconAsset: 'assets/icons/heart.svg',
-                label: 'crop_mode_heart'.tr,
-                selected: _mode == _CropMode.heart,
-                onTap: () => _setMode(_CropMode.heart),
+          title: const Text('Crop Error'),
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('An error occurred while loading the crop screen.'),
+              const SizedBox(height: 16),
+              Text('Error: $e'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: Get.back,
+                child: const Text('Go Back'),
               ),
             ],
           ),
-        ],
-      ),
-    );
+        ),
+      );
+    }
   }
 }
