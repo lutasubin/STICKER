@@ -1,0 +1,323 @@
+# Flutter Sticker App - AI Assistant Guidelines
+
+## 📋 Thông tin dự án
+
+Đây là ứng dụng Flutter Sticker Maker cho WhatsApp với:
+- **Framework**: Flutter SDK ^3.7.2
+- **State Management**: GetX (^4.7.3)
+- **Storage**: GetStorage (^2.1.1)
+- **AI**: TensorFlow Lite (background removal với u2netp_320.tflite)
+- **Native Integration**: Android native code (Kotlin/Java) cho WhatsApp sticker provider
+
+## 🏗️ Kiến trúc dự án
+
+### Cấu trúc thư mục
+```
+lib/
+├── controller/          # GetX Controllers
+├── helper/             # Utilities (dialogs, logger, translate)
+├── model/              # Data models
+├── router/             # App routing (GetX)
+├── service/            # Business logic services
+├── view/               # UI screens & widgets
+├── main.dart           # Entry point
+└── sticker_app.dart    # Main app configuration
+```
+
+### Kiến trúc phân lớp
+1. **View Layer**: Screens và Widgets (dùng GetX reactive UI)
+2. **Controller Layer**: GetX Controllers quản lý state
+3. **Service Layer**: Business logic (WhatsApp integration, background removal, etc.)
+4. **Model Layer**: Data classes (StickerPack, UserStickerPack, Onboard)
+
+## 🎯 Nguyên tắc code chính
+
+### 1. State Management với GetX
+- **LUÔN** dùng `GetX`, `Obx`, hoặc `GetBuilder` cho reactive UI
+- **KHÔNG** sử dụng `setState()` hoặc Provider
+- Controller phải kế thừa `GetxController`
+- Observable variables dùng `.obs` và cập nhật bằng `.value`
+- Dependency injection qua `Get.put()`, `Get.lazyPut()`, hoặc `Bindings`
+
+```dart
+// ✅ Đúng
+class HomeController extends GetxController {
+  final isLoading = false.obs;
+  
+  void loadData() {
+    isLoading.value = true;
+    // ... logic
+    isLoading.value = false;
+  }
+}
+
+// UI
+Obx(() => controller.isLoading.value 
+  ? CircularProgressIndicator() 
+  : Content())
+```
+
+### 2. Navigation với GetX
+- **LUÔN** dùng `Get.to()`, `Get.toNamed()`, `Get.back()`
+- **KHÔNG** dùng `Navigator.push()` trực tiếp
+- Routes được định nghĩa trong `lib/router/router.dart`
+
+```dart
+// ✅ Đúng
+Get.toNamed(AppRoutes.editSticker, arguments: sticker);
+
+// ❌ Sai
+Navigator.push(context, MaterialPageRoute(...));
+```
+
+### 3. Quản lý assets
+- Sticker packs phải tuân theo chuẩn WhatsApp:
+  - **Kích thước**: 512x512 pixels (bắt buộc)
+  - **Định dạng**: WebP
+  - **Dung lượng**: < 100KB mỗi sticker
+  - **Số lượng**: 3-30 stickers mỗi pack
+  - **Tray icon**: < 50KB, kích thước 24x24 đến 512x512
+  - **Emojis**: Mỗi sticker có 1-3 emoji
+
+### 4. WhatsApp Native Integration
+- Service: `lib/service/sticker/whatsapp_sticker_service.dart`
+- Native: `android/app/src/main/kotlin/com/mobileai/stickerapp/`
+- **Namespace**: Tất cả code Android phải dùng `com.mobileai.stickerapp`
+- **ContentProvider**: `StickerContentProvider` phải được khai báo đúng trong AndroidManifest.xml
+
+### 5. Code Style (Dart)
+- **Naming Conventions**:
+  - Classes: `PascalCase` (VD: `StickerPackDetailScreen`)
+  - Variables/Functions: `camelCase` (VD: `isLoading`, `loadData()`)
+  - Private members: `_camelCase` (VD: `_isSending`)
+  - Constants: `camelCase` với `const` hoặc `final`
+  
+- **File naming**: `snake_case.dart` (VD: `sticker_pack_detail_screen.dart`)
+
+- **Imports order**:
+  1. Dart SDK imports
+  2. Flutter imports
+  3. Package imports
+  4. Project imports
+  ```dart
+  import 'dart:async';
+  import 'package:flutter/material.dart';
+  import 'package:get/get.dart';
+  import 'package:sticker_app/model/sticker_pack.dart';
+  ```
+
+### 6. UI/UX Guidelines
+- **Immersive mode**: App chạy toàn màn hình (portrait only)
+- **Loading states**: Luôn disable buttons khi đang xử lý (`_isSending`, `isLoading`)
+- **Debouncing**: Thêm delay nhỏ (300ms) trước khi gọi native intent
+- **Error handling**: Hiển thị `SnackBar` hoặc `Dialog` rõ ràng với Get.snackbar()
+- **Responsive**: Dùng MediaQuery cho responsive layout
+
+### 7. Image Processing
+- Background removal: Dùng `U2netBackgroundRemover` (TensorFlow Lite)
+- Crop/Edit: Dùng `flutter_painter_v2` và `extended_image`
+- Compression: Dùng `flutter_image_compress`
+- Save/Share: Dùng `photo_manager`, `path_provider`, `share_plus`
+
+## 🚨 Các lỗi thường gặp & cách tránh
+
+### 1. WhatsApp Integration
+- **Lỗi**: "Third party pack cannot be found" trên Android 14/MIUI
+  - **Nguyên nhân**: ROM hạn chế app bên thứ ba, battery optimization
+  - **Khắc phục**: Tắt battery saver cho app, chạy thử trên thiết bị khác
+
+### 2. Native Android
+- **Lỗi**: ClassNotFoundException cho StickerContentProvider
+  - **Nguyên nhân**: Namespace không đồng nhất, sourceSets chưa cấu hình
+  - **Khắc phục**: Đảm bảo tất cả Java/Kotlin files dùng `com.mobileai.stickerapp`
+
+### 3. Assets
+- **Lỗi**: Sticker không load hoặc WhatsApp reject
+  - **Nguyên nhân**: File không đúng 512x512 hoặc > 100KB
+  - **Khắc phục**: Validate tất cả sticker assets trước khi thêm vào pack
+
+## 🔧 Công việc thường gặp
+
+### Thêm sticker pack mới
+1. Thêm thư mục assets vào `assets/sticker_maker/{Category}/{PackName}/`
+2. Đảm bảo tất cả file .webp là 512x512, < 100KB
+3. Thêm pack vào `pubspec.yaml` (assets section)
+4. Cập nhật `lib/service/sticker/sticker_service.dart`:
+```dart
+StickerPack(
+  id: 'unique_id',
+  title: 'Pack Name',
+  subtitle: 'Description',
+  category: 'Animal', // hoặc Memes, Baby, Anime
+  folderPath: 'assets/sticker_maker/Animal/PackName',
+  itemCount: 30, // số lượng file thực tế
+),
+```
+
+### Thêm screen mới
+1. Tạo file trong `lib/view/{feature}/{screen_name}.dart`
+2. Tạo controller trong `lib/controller/{feature}/{feature}_controller.dart`
+3. Thêm route vào `lib/router/router.dart`
+4. Sử dụng GetView hoặc StatelessWidget với GetX
+
+### Debug native code
+1. Kiểm tra logs: `flutter run` và xem console
+2. Android logs: `adb logcat | grep "WhatsApp\|Sticker"`
+3. Verify ContentProvider: Kiểm tra `sticker_packs.json` trong app data
+
+## 📝 Comment Guidelines
+- Comment bằng **Tiếng Việt** khi giải thích logic phức tạp
+- Comment bằng **Tiếng Anh** cho API documentation và technical terms
+- Dùng `//TODO:` cho task chưa hoàn thành
+- Dùng `//FIXME:` cho code cần sửa
+- Dùng `//NOTE:` cho lưu ý quan trọng
+
+## 🧪 Testing & Deployment
+
+### Build APK
+```bash
+# Debug
+flutter run
+
+# Release
+flutter build apk --release
+# Output: build/app/outputs/flutter-apk/app-release.apk
+```
+
+### Test checklist
+- [ ] WhatsApp integration (cài/gỡ pack)
+- [ ] Background removal (TFLite model)
+- [ ] Crop & Edit sticker
+- [ ] Save to gallery
+- [ ] Share functionality
+- [ ] Permission handling (camera, storage)
+- [ ] UI responsive trên nhiều màn hình
+
+## 🎨 Code Patterns
+
+### Service Pattern
+```dart
+class MyService {
+  static final MyService _instance = MyService._internal();
+  factory MyService() => _instance;
+  MyService._internal();
+  
+  Future<Result> doSomething() async {
+    try {
+      // logic
+      return Success(data);
+    } catch (e) {
+      AppLogger.error('MyService', 'doSomething failed', e);
+      return Failure(e.toString());
+    }
+  }
+}
+```
+
+### GetX Controller Pattern
+```dart
+class FeatureController extends GetxController {
+  final isLoading = false.obs;
+  final data = Rx<DataType?>(null);
+  
+  @override
+  void onInit() {
+    super.onInit();
+    loadData();
+  }
+  
+  Future<void> loadData() async {
+    isLoading.value = true;
+    try {
+      final result = await FeatureService().fetchData();
+      data.value = result;
+    } catch (e) {
+      Get.snackbar('Error', e.toString());
+    } finally {
+      isLoading.value = false;
+    }
+  }
+  
+  @override
+  void onClose() {
+    // cleanup
+    super.onClose();
+  }
+}
+```
+
+### Screen Pattern
+```dart
+class FeatureScreen extends StatelessWidget {
+  const FeatureScreen({super.key});
+  
+  @override
+  Widget build(BuildContext context) {
+    final controller = Get.put(FeatureController());
+    
+    return Scaffold(
+      appBar: AppBar(title: const Text('Feature')),
+      body: Obx(() {
+        if (controller.isLoading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return _buildContent(controller);
+      }),
+    );
+  }
+  
+  Widget _buildContent(FeatureController controller) {
+    // UI implementation
+  }
+}
+```
+
+## 🔐 Permissions
+App yêu cầu permissions (xử lý bằng `permission_handler`):
+- Camera: Chụp ảnh cho sticker
+- Storage/Photos: Lưu & load ảnh
+- Network: Load assets online (nếu có)
+
+## 🌐 Localization
+- Service: `lib/helper/translate/translate_service.dart`
+- UI strings: Hỗ trợ đa ngôn ngữ (hiện tại: tiếng Việt)
+- Thêm translations trong `lib/view/lang/`
+
+## ⚡ Performance
+- **Lazy loading**: Dùng `Get.lazyPut()` cho controllers
+- **Image caching**: extended_image tự động cache
+- **Background tasks**: Dùng `compute()` cho heavy processing (image compression, AI removal)
+- **Memory**: Dispose controllers và streams đúng cách trong `onClose()`
+
+## 🔍 Debugging Tools
+- Logger: `lib/helper/logger/app_logger.dart`
+- Dialogs: `lib/helper/dialogs/app_dialogs.dart`
+- GetStorage viewer: Check `GetStorage().read('key')` để debug storage
+
+---
+
+## 📌 Lưu ý quan trọng nhất
+
+1. **LUÔN** tuân theo chuẩn WhatsApp sticker (512x512, <100KB, 3-30 stickers)
+2. **LUÔN** dùng GetX cho state management và navigation
+3. **LUÔN** validate input trước khi gọi native code
+4. **LUÔN** handle errors với try-catch và thông báo rõ ràng cho user
+5. **LUÔN** test trên thiết bị thật (WhatsApp integration không hoạt động tốt trên emulator)
+6. **KHÔNG BAO GIỜ** bypass validation của WhatsApp
+7. **KHÔNG BAO GIỜ** dùng setState() - chỉ dùng GetX reactive
+8. **KHÔNG BAO GIỜ** hardcode strings - dùng translation service
+9. **LUÔN** kiểm tra version compatibility khi thêm thư viện mới (phải phù hợp với Flutter SDK ^3.7.2)
+10. **LUÔN** viết code rõ ràng, dễ mở rộng và maintain
+11. **LUÔN** trả lời bằng tiếng Việt khi giao tiếp với người dùng
+
+---
+
+**Khi làm việc với dự án này, hãy luôn:**
+- Đọc kỹ README.md để hiểu flow WhatsApp integration
+- Kiểm tra logs kỹ khi có lỗi native
+- Test trên nhiều thiết bị Android khác nhau (đặc biệt Android 12-14)
+- Backup file `sticker_packs.json` khi test
+- Document code phức tạp bằng comments rõ ràng
+- Kiểm tra version compatibility trước khi thêm package mới vào pubspec.yaml
+- Viết code clean, maintainable, và dễ mở rộng
+- Giao tiếp bằng tiếng Việt với người dùng

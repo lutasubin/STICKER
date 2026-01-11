@@ -69,9 +69,9 @@ class StorageService extends GetxService {
   }
 
   T? read<T>(String key) => _box.read(key);
-  
+
   void write(String key, dynamic value) => _box.write(key, value);
-  
+
   void remove(String key) => _box.remove(key);
 
   @override

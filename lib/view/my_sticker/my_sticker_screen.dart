@@ -133,12 +133,6 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          IconButton(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh, color: Colors.black),
-          ),
-        ],
       ),
       body: ListView.builder(
         padding: const EdgeInsets.all(16),

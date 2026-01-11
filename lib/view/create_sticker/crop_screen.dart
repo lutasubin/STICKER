@@ -104,11 +104,6 @@ class _CropScreenState extends State<CropScreen> {
     try {
       AppLogger.i('[CropScreen] Starting crop process, mode=$_mode');
 
-      // Show immediate feedback
-      if (mounted) {
-        setState(() {});
-      }
-
       final editorState = _editorKey.currentState;
       final cropRect = editorState?.getCropRect();
 
@@ -124,39 +119,66 @@ class _CropScreenState extends State<CropScreen> {
         await Future.delayed(Duration.zero);
         pngBytes = await _processAICrop();
       } else {
-        // Manual crop có thể chạy trong isolate
+        // Manual crop: KHÔNG có loading, KHÔNG có delay, chạy ngay lập tức
         AppLogger.d('[CropScreen] Processing manual crop in isolate');
-        if (mounted) {
-          setState(() => _loadingMessage = 'Đang xử lý...');
-        }
         pngBytes = await _processImageInIsolate(cropRect);
       }
-
-      if (mounted) {
-        setState(() => _loadingMessage = 'Đang nén ảnh...');
-      }
-      // Yield để UI update
-      await Future.delayed(Duration.zero);
 
       AppLogger.d(
         '[CropScreen] Image processed, size=${pngBytes.length} bytes',
       );
 
-      // Compress và save trên main thread (cần plugin)
-      final fileUri = await _compressAndSave(pngBytes);
-      AppLogger.i('[CropScreen] File saved: $fileUri');
+      if (_mode == _CropMode.autoCutout) {
+        // AI crop: Compress trước rồi mới navigate (vì nặng, cần loading)
+        if (mounted) {
+          setState(() => _loadingMessage = 'Đang nén ảnh...');
+          await Future.delayed(Duration.zero); // Yield để UI update
+        }
+        final fileUri = await _compressAndSave(pngBytes);
+        AppLogger.i('[CropScreen] File saved: $fileUri');
 
-      // Navigate ngay
-      Get.toNamed(
-        AppRoutes.editSticker,
-        arguments: {
-          'stickerUri': fileUri,
-          'pack': _pack,
-          'replaceStickerUri': _replaceStickerUri,
-          'goToUserPackDetail': _goToUserPackDetail,
-          'isNewPack': _isNewPack,
-        },
-      );
+        // Navigate sau khi compress xong
+        Get.toNamed(
+          AppRoutes.editSticker,
+          arguments: {
+            'stickerUri': fileUri,
+            'pack': _pack,
+            'replaceStickerUri': _replaceStickerUri,
+            'goToUserPackDetail': _goToUserPackDetail,
+            'isNewPack': _isNewPack,
+          },
+        );
+      } else {
+        // Manual crop: Navigate NGAY LẬP TỨC, không đợi compress
+        // Lưu PNG tạm nhanh để navigate ngay
+        final tempDir = await getApplicationDocumentsDirectory();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final tempFile = File(
+          '${tempDir.path}${Platform.pathSeparator}temp_$timestamp.png',
+        );
+        await tempFile.writeAsBytes(pngBytes, flush: true);
+        final tempUri = Uri.file(tempFile.path).toString();
+
+        AppLogger.i('[CropScreen] Navigate immediately with temp PNG file');
+
+        // Navigate NGAY - không đợi compress WebP
+        Get.toNamed(
+          AppRoutes.editSticker,
+          arguments: {
+            'stickerUri': tempUri,
+            'pack': _pack,
+            'replaceStickerUri': _replaceStickerUri,
+            'goToUserPackDetail': _goToUserPackDetail,
+            'isNewPack': _isNewPack,
+            'isTempFile':
+                true, // Đánh dấu là file tạm, EditScreen sẽ replace khi save
+          },
+        );
+
+        // Compress và save trong background (không block UI)
+        // File WebP sẽ được dùng khi save trong EditScreen
+        _compressAndSaveInBackground(pngBytes, tempUri, timestamp);
+      }
 
       AppLogger.i('[CropScreen] Navigation completed');
     } catch (e, st) {
@@ -264,14 +286,17 @@ class _CropScreenState extends State<CropScreen> {
     final r = math.min(canvas.width, canvas.height) / 2.0;
     final rSquared = r * r;
 
+    // Tối ưu: xử lý trực tiếp trên buffer thay vì getPixel/setPixel
+    final pixels = canvas.buffer.asUint8List();
     for (var y = 0; y < canvas.height; y++) {
       for (var x = 0; x < canvas.width; x++) {
         final dx = x - cx;
         final dy = y - cy;
         final inside = (dx * dx + dy * dy) <= rSquared;
         if (!inside) {
-          final p = canvas.getPixel(x, y);
-          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+          // RGBA format: mỗi pixel 4 bytes, set alpha = 0
+          final index = (y * canvas.width + x) * 4 + 3;
+          pixels[index] = 0;
         }
       }
     }
@@ -282,6 +307,8 @@ class _CropScreenState extends State<CropScreen> {
     final cy = (canvas.height - 1) / 2.0;
     final scale = (math.min(canvas.width, canvas.height) / 2.0) * 0.77;
 
+    // Tối ưu: xử lý trực tiếp trên buffer thay vì getPixel/setPixel
+    final pixels = canvas.buffer.asUint8List();
     for (var y = 0; y < canvas.height; y++) {
       for (var x = 0; x < canvas.width; x++) {
         final nx = (x - cx) / scale;
@@ -292,8 +319,9 @@ class _CropScreenState extends State<CropScreen> {
         final inside = f <= 0;
 
         if (!inside) {
-          final p = canvas.getPixel(x, y);
-          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+          // RGBA format: mỗi pixel 4 bytes, set alpha = 0
+          final index = (y * canvas.width + x) * 4 + 3;
+          pixels[index] = 0;
         }
       }
     }
@@ -340,23 +368,55 @@ class _CropScreenState extends State<CropScreen> {
     return Uri.file(outFile.path).toString();
   }
 
+  /// Compress và save trong background (không block UI)
+  Future<void> _compressAndSaveInBackground(
+    Uint8List pngBytes,
+    String tempUri,
+    int timestamp,
+  ) async {
+    try {
+      final webpBytes = await _encodeWebp(pngBytes);
+      AppLogger.d(
+        '[CropScreen] WebP encoded in background, size=${webpBytes.length} bytes',
+      );
+
+      // Save file WebP với cùng timestamp để EditScreen có thể tìm thấy
+      final dir = await getApplicationDocumentsDirectory();
+      final outDir = Directory(
+        '${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${_pack.id}',
+      );
+      if (!await outDir.exists()) {
+        await outDir.create(recursive: true);
+      }
+
+      // Lưu với cùng timestamp để EditScreen biết file WebP tương ứng
+      final webpFile = File(
+        '${outDir.path}${Platform.pathSeparator}$timestamp.webp',
+      );
+      await webpFile.writeAsBytes(webpBytes, flush: true);
+
+      AppLogger.i('[CropScreen] WebP saved in background: ${webpFile.path}');
+
+      // Giữ file PNG tạm để EditScreen load (sẽ xóa khi save final trong EditScreen)
+    } catch (e, st) {
+      AppLogger.e('[CropScreen] Error in background compress/save', e, st);
+      // Không hiển thị error cho user vì đã navigate rồi
+      // EditScreen vẫn có thể dùng PNG tạm
+    }
+  }
+
   /// Encode WebP trên main thread (cần plugin)
+  /// Tối ưu: Giảm số lần thử từ 14 xuống 7 để nhanh hơn
   Future<Uint8List> _encodeWebp(Uint8List pngBytes) async {
     const maxBytes = 100 * 1024;
+    // Tối ưu: Chỉ thử 7 mức quality thay vì 14 (nhanh gấp đôi!)
     const qualities = <int>[
-      95,
-      90,
-      85,
+      90, // Start cao hơn (95 thường quá lớn)
       80,
-      75,
       70,
-      65,
       60,
-      55,
       50,
-      45,
       40,
-      35,
       30,
     ];
 
@@ -475,14 +535,17 @@ class _CropScreenState extends State<CropScreen> {
     final r = math.min(canvas.width, canvas.height) / 2.0;
     final rSquared = r * r;
 
+    // Tối ưu: xử lý trực tiếp trên buffer thay vì getPixel/setPixel
+    final pixels = canvas.buffer.asUint8List();
     for (var y = 0; y < canvas.height; y++) {
       for (var x = 0; x < canvas.width; x++) {
         final dx = x - cx;
         final dy = y - cy;
         final inside = (dx * dx + dy * dy) <= rSquared;
         if (!inside) {
-          final p = canvas.getPixel(x, y);
-          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+          // RGBA format: mỗi pixel 4 bytes, set alpha = 0
+          final index = (y * canvas.width + x) * 4 + 3;
+          pixels[index] = 0;
         }
       }
     }
@@ -493,6 +556,8 @@ class _CropScreenState extends State<CropScreen> {
     final cy = (canvas.height - 1) / 2.0;
     final scale = (math.min(canvas.width, canvas.height) / 2.0) * 0.77;
 
+    // Tối ưu: xử lý trực tiếp trên buffer thay vì getPixel/setPixel
+    final pixels = canvas.buffer.asUint8List();
     for (var y = 0; y < canvas.height; y++) {
       for (var x = 0; x < canvas.width; x++) {
         final nx = (x - cx) / scale;
@@ -504,8 +569,9 @@ class _CropScreenState extends State<CropScreen> {
         final inside = f <= 0;
 
         if (!inside) {
-          final p = canvas.getPixel(x, y);
-          canvas.setPixelRgba(x, y, p.r, p.g, p.b, 0);
+          // RGBA format: mỗi pixel 4 bytes, set alpha = 0
+          final index = (y * canvas.width + x) * 4 + 3;
+          pixels[index] = 0;
         }
       }
     }
@@ -585,9 +651,13 @@ class _CropScreenState extends State<CropScreen> {
                 ),
               ],
             ),
-            // Loading overlay khi đang xử lý
-            if (_saving && _loadingMessage != null)
+            // Loading overlay chỉ cho AI crop (nặng)
+            // Manual crop nhanh, không cần loading overlay
+            if (_saving &&
+                _loadingMessage != null &&
+                _mode == _CropMode.autoCutout)
               Container(
+                // ignore: deprecated_member_use
                 color: Colors.black.withOpacity(0.5),
                 child: Center(
                   child: Container(

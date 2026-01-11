@@ -21,27 +21,25 @@ class CropEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: ExtendedImage.file(
-            key: ValueKey(modeKey),
-            imageFile,
-            fit: BoxFit.contain,
-            mode: ExtendedImageMode.editor,
-            extendedImageEditorKey: editorKey,
-            initEditorConfigHandler: (state) {
-              return EditorConfig(
-                maxScale: 8.0,
-                cropRectPadding: const EdgeInsets.all(20.0),
-                hitTestSize: 20.0,
-                cropAspectRatio: cropAspectRatio,
-                initCropRectType: InitCropRectType.imageRect,
-                cropLayerPainter: cropLayerPainter,
-              );
-            },
-          ),
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ExtendedImage.file(
+          key: ValueKey(modeKey),
+          imageFile,
+          fit: BoxFit.contain,
+          mode: ExtendedImageMode.editor,
+          extendedImageEditorKey: editorKey,
+          initEditorConfigHandler: (state) {
+            return EditorConfig(
+              maxScale: 8.0,
+              cropRectPadding: const EdgeInsets.all(20.0),
+              hitTestSize: 20.0,
+              cropAspectRatio: cropAspectRatio,
+              initCropRectType: InitCropRectType.imageRect,
+              cropLayerPainter: cropLayerPainter,
+            );
+          },
         ),
       ),
     );

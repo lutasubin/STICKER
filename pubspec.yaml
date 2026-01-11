@@ -98,7 +98,15 @@ flutter:
     - assets/sticker_maker/Baby/Ullzangbaby/
       # Memes sticker
     - assets/sticker_maker/Memes/Face_meme/
-   
+
+    - assets/sticker_edit/background/
+    - assets/sticker_edit/Sticker/accessory/
+    - assets/sticker_edit/Sticker/Birthday/
+    - assets/sticker_edit/Sticker/Galss/
+    - assets/sticker_edit/Sticker/hair/
+    - assets/sticker_edit/Sticker/hat/
+    - assets/sticker_edit/Sticker/love/
+    - assets/sticker_edit/Sticker/text style/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

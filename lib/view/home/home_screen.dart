@@ -74,14 +74,13 @@ class HomeScreen extends StatelessWidget {
 
     if (result == 'regular') {
       final service = Get.find<UserStickerPackService>();
-      final UserStickerPack pack = service.createDraftPack(title: 'Create package');
+      final UserStickerPack pack = service.createDraftPack(
+        title: 'Create package',
+      );
 
       Get.toNamed(
         AppRoutes.createStickerSelectImage,
-        arguments: {
-          'pack': pack,
-          'isNewPack': true,
-        },
+        arguments: {'pack': pack, 'isNewPack': true},
       );
       return;
     }
@@ -137,7 +136,11 @@ class HomeScreen extends StatelessWidget {
                   final StickerPack pack = controller.packs[index];
                   return StickerPackTile(
                     pack: pack,
-                    onAdd: () => controller.addPackToWhatsapp(pack),
+                    onAdd:
+                        () => Get.toNamed(
+                          AppRoutes.stickerPackDetail,
+                          arguments: pack,
+                        ),
                     onTap:
                         () => Get.toNamed(
                           AppRoutes.stickerPackDetail,
@@ -193,11 +196,7 @@ class _CreateStickerOptionCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
           child: Row(
             children: [
-              SvgPicture.asset(
-                svgAsset,
-                width: 40,
-                height: 40,
-              ),
+              SvgPicture.asset(svgAsset, width: 40, height: 40),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(

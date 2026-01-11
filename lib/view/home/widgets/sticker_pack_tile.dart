@@ -101,24 +101,20 @@ class StickerPackTile extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             SizedBox(
-              height: 70,
+              height: 60,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: pack.previewAssets.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 12),
+                itemCount:
+                    pack.previewAssets.length > 6
+                        ? 6
+                        : pack.previewAssets.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 4),
                 itemBuilder: (context, index) {
                   final asset = pack.previewAssets[index];
-                  return Container(
-                    width: 50,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: Image.asset(asset, fit: BoxFit.cover),
-                    ),
+                  return SizedBox(
+                    width: 60,
+                    height: 60,
+                    child: Image.asset(asset, fit: BoxFit.cover),
                   );
                 },
               ),

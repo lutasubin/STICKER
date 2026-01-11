@@ -71,7 +71,6 @@ class U2NetBackgroundRemover {
 
     final interpreter = await _getInterpreter(modelAssetPath: modelAssetPath);
 
-    // Resize về input size (model yêu cầu chính xác 320x320)
     final resizedForModel = img.copyResize(
       decoded,
       width: _inputSize,
