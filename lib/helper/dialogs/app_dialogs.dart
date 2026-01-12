@@ -298,4 +298,9 @@ class AppDialogs {
   static void showStickerAlreadyAdded() {
     showWarning('warning_pack_already_in_whatsapp'.tr);
   }
+
+  /// Thông báo sticker pack đã được update thành công.
+  static void showStickerUpdatedSuccess() {
+    showSuccess('success_sticker_updated'.tr);
+  }
 }

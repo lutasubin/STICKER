@@ -71,7 +71,7 @@ class TranslationService extends Translations {
     'en_US': {
       // lang
       'language_setting': 'LANGUAGE SETTING',
-      
+
       // Setting
       'setting': 'SETTING',
       'rate_app': 'Rate App',
@@ -88,7 +88,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Select image',
-      'permission_photos_required': 'Photo access permission is required to pick an image.',
+      'permission_photos_required':
+          'Photo access permission is required to pick an image.',
       'grant_permission': 'Grant permission',
       'open_settings': 'Open settings',
 
@@ -98,11 +99,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Square',
       'crop_mode_circle': 'Circle',
       'crop_mode_heart': 'Heart',
-      'coming_soon_ai_cutout': 'On-device AI cutout will be implemented in the next step.',
-      'coming_soon_animated_stickers': 'Animated stickers will be implemented in the next step.',
+      'coming_soon_ai_cutout':
+          'On-device AI cutout will be implemented in the next step.',
+      'coming_soon_animated_stickers':
+          'Animated stickers will be implemented in the next step.',
       'error_cannot_read_image': 'Cannot read image.',
       'error_cannot_encode_webp': 'Cannot encode WebP.',
-      'error_sticker_too_large': 'Sticker is too large (@sizeKbKB). Please crop smaller or choose a simpler image.',
+      'error_sticker_too_large':
+          'Sticker is too large (@sizeKbKB). Please crop smaller or choose a simpler image.',
       'success_saved_to_pack': 'Sticker created and saved to pack "@title".',
 
       // Snackbars / dialogs
@@ -110,15 +114,18 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Error',
       'snackbar_warning_title': 'Warning',
       'snackbar_info_title': 'Info',
-      'error_whatsapp_not_installed': 'WhatsApp is not installed on this device.',
+      'error_whatsapp_not_installed':
+          'WhatsApp is not installed on this device.',
       'success_sent_to_whatsapp': 'Sticker pack has been sent to WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'This sticker pack already exists in WhatsApp.',
+      'success_sticker_updated': 'Sticker pack has been updated in WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'This sticker pack already exists in WhatsApp.',
     },
 
     'vi_VN': {
       // lang
       'language_setting': 'CÀI ĐẶT NGÔN NGỮ',
-    
+
       // Setting
       'setting': 'CÀI ĐẶT',
       'rate_app': 'Đánh Giá Ứng Dụng',
@@ -145,11 +152,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Hình vuông',
       'crop_mode_circle': 'Hình tròn',
       'crop_mode_heart': 'Trái tim',
-      'coming_soon_ai_cutout': 'AI cutout on-device sẽ được làm ở bước tiếp theo.',
-      'coming_soon_animated_stickers': 'Animated stickers sẽ được làm ở bước tiếp theo.',
+      'coming_soon_ai_cutout':
+          'AI cutout on-device sẽ được làm ở bước tiếp theo.',
+      'coming_soon_animated_stickers':
+          'Animated stickers sẽ được làm ở bước tiếp theo.',
       'error_cannot_read_image': 'Không đọc được ảnh.',
       'error_cannot_encode_webp': 'Không encode được WebP.',
-      'error_sticker_too_large': 'Sticker quá lớn (@sizeKbKB). Vui lòng crop nhỏ hơn hoặc chọn ảnh đơn giản hơn.',
+      'error_sticker_too_large':
+          'Sticker quá lớn (@sizeKbKB). Vui lòng crop nhỏ hơn hoặc chọn ảnh đơn giản hơn.',
       'success_saved_to_pack': 'Đã tạo sticker và lưu vào pack "@title".',
 
       // Snackbars / dialogs
@@ -157,9 +167,12 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Lỗi',
       'snackbar_warning_title': 'Cảnh báo',
       'snackbar_info_title': 'Thông báo',
-      'error_whatsapp_not_installed': 'WhatsApp chưa được cài đặt trên thiết bị.',
+      'error_whatsapp_not_installed':
+          'WhatsApp chưa được cài đặt trên thiết bị.',
       'success_sent_to_whatsapp': 'Đã gửi gói sticker sang WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Gói sticker đã tồn tại trong WhatsApp.',
+      'success_sticker_updated': 'Đã cập nhật gói sticker trong WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Gói sticker đã tồn tại trong WhatsApp.',
     },
 
     'ru_RU': {
@@ -182,7 +195,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Выбрать изображение',
-      'permission_photos_required': 'Требуется разрешение на доступ к фотографиям.',
+      'permission_photos_required':
+          'Требуется разрешение на доступ к фотографиям.',
       'grant_permission': 'Предоставить разрешение',
       'open_settings': 'Открыть настройки',
 
@@ -192,11 +206,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Квадрат',
       'crop_mode_circle': 'Круг',
       'crop_mode_heart': 'Сердце',
-      'coming_soon_ai_cutout': 'ИИ-обрезка на устройстве будет реализована на следующем этапе.',
-      'coming_soon_animated_stickers': 'Анимированные стикеры будут реализованы на следующем этапе.',
+      'coming_soon_ai_cutout':
+          'ИИ-обрезка на устройстве будет реализована на следующем этапе.',
+      'coming_soon_animated_stickers':
+          'Анимированные стикеры будут реализованы на следующем этапе.',
       'error_cannot_read_image': 'Не удалось прочитать изображение.',
       'error_cannot_encode_webp': 'Не удалось закодировать WebP.',
-      'error_sticker_too_large': 'Стикер слишком большой (@sizeKbКБ). Пожалуйста, обрежьте меньше или выберите более простое изображение.',
+      'error_sticker_too_large':
+          'Стикер слишком большой (@sizeKbКБ). Пожалуйста, обрежьте меньше или выберите более простое изображение.',
       'success_saved_to_pack': 'Стикер создан и сохранен в пакет "@title".',
 
       // Snackbars / dialogs
@@ -204,15 +221,17 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Ошибка',
       'snackbar_warning_title': 'Предупреждение',
       'snackbar_info_title': 'Информация',
-      'error_whatsapp_not_installed': 'WhatsApp не установлен на этом устройстве.',
+      'error_whatsapp_not_installed':
+          'WhatsApp не установлен на этом устройстве.',
       'success_sent_to_whatsapp': 'Пакет стикеров отправлен в WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Этот пакет стикеров уже существует в WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Этот пакет стикеров уже существует в WhatsApp.',
     },
 
     'de_DE': {
       // lang
       'language_setting': 'SPRACHEINSTELLUNGEN',
-      
+
       // Setting
       'setting': 'EINSTELLUNGEN',
       'rate_app': 'App Bewerten',
@@ -229,7 +248,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Bild auswählen',
-      'permission_photos_required': 'Fotoberechtigung ist erforderlich, um ein Bild auszuwählen.',
+      'permission_photos_required':
+          'Fotoberechtigung ist erforderlich, um ein Bild auszuwählen.',
       'grant_permission': 'Berechtigung erteilen',
       'open_settings': 'Einstellungen öffnen',
 
@@ -239,21 +259,27 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Quadrat',
       'crop_mode_circle': 'Kreis',
       'crop_mode_heart': 'Herz',
-      'coming_soon_ai_cutout': 'KI-Ausschnitt auf dem Gerät wird im nächsten Schritt implementiert.',
-      'coming_soon_animated_stickers': 'Animierte Sticker werden im nächsten Schritt implementiert.',
+      'coming_soon_ai_cutout':
+          'KI-Ausschnitt auf dem Gerät wird im nächsten Schritt implementiert.',
+      'coming_soon_animated_stickers':
+          'Animierte Sticker werden im nächsten Schritt implementiert.',
       'error_cannot_read_image': 'Bild kann nicht gelesen werden.',
       'error_cannot_encode_webp': 'WebP kann nicht kodiert werden.',
-      'error_sticker_too_large': 'Sticker ist zu groß (@sizeKbKB). Bitte kleiner zuschneiden oder ein einfacheres Bild wählen.',
-      'success_saved_to_pack': 'Sticker erstellt und in Paket "@title" gespeichert.',
+      'error_sticker_too_large':
+          'Sticker ist zu groß (@sizeKbKB). Bitte kleiner zuschneiden oder ein einfacheres Bild wählen.',
+      'success_saved_to_pack':
+          'Sticker erstellt und in Paket "@title" gespeichert.',
 
       // Snackbars / dialogs
       'snackbar_success_title': 'Erfolg',
       'snackbar_error_title': 'Fehler',
       'snackbar_warning_title': 'Warnung',
       'snackbar_info_title': 'Info',
-      'error_whatsapp_not_installed': 'WhatsApp ist auf diesem Gerät nicht installiert.',
+      'error_whatsapp_not_installed':
+          'WhatsApp ist auf diesem Gerät nicht installiert.',
       'success_sent_to_whatsapp': 'Sticker-Paket wurde an WhatsApp gesendet.',
-      'warning_pack_already_in_whatsapp': 'Dieses Sticker-Paket existiert bereits in WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Dieses Sticker-Paket existiert bereits in WhatsApp.',
     },
 
     'uk_UA': {
@@ -286,11 +312,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Квадрат',
       'crop_mode_circle': 'Коло',
       'crop_mode_heart': 'Серце',
-      'coming_soon_ai_cutout': 'ШІ-обрізка на пристрої буде реалізована на наступному кроці.',
-      'coming_soon_animated_stickers': 'Анімовані стікери будуть реалізовані на наступному кроці.',
+      'coming_soon_ai_cutout':
+          'ШІ-обрізка на пристрої буде реалізована на наступному кроці.',
+      'coming_soon_animated_stickers':
+          'Анімовані стікери будуть реалізовані на наступному кроці.',
       'error_cannot_read_image': 'Не вдалося прочитати зображення.',
       'error_cannot_encode_webp': 'Не вдалося закодувати WebP.',
-      'error_sticker_too_large': 'Стікер занадто великий (@sizeKbКБ). Будь ласка, обріжте менше або виберіть простіше зображення.',
+      'error_sticker_too_large':
+          'Стікер занадто великий (@sizeKbКБ). Будь ласка, обріжте менше або виберіть простіше зображення.',
       'success_saved_to_pack': 'Стікер створено і збережено в пакет "@title".',
 
       // Snackbars / dialogs
@@ -298,9 +327,11 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Помилка',
       'snackbar_warning_title': 'Попередження',
       'snackbar_info_title': 'Інформація',
-      'error_whatsapp_not_installed': 'WhatsApp не встановлено на цьому пристрої.',
+      'error_whatsapp_not_installed':
+          'WhatsApp не встановлено на цьому пристрої.',
       'success_sent_to_whatsapp': 'Пакет стікерів надіслано в WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Цей пакет стікерів вже існує в WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Цей пакет стікерів вже існує в WhatsApp.',
     },
 
     'en_SG': {
@@ -323,7 +354,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Select image',
-      'permission_photos_required': 'Photo access permission is required to pick an image.',
+      'permission_photos_required':
+          'Photo access permission is required to pick an image.',
       'grant_permission': 'Grant permission',
       'open_settings': 'Open settings',
 
@@ -333,11 +365,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Square',
       'crop_mode_circle': 'Circle',
       'crop_mode_heart': 'Heart',
-      'coming_soon_ai_cutout': 'On-device AI cutout will be implemented in the next step.',
-      'coming_soon_animated_stickers': 'Animated stickers will be implemented in the next step.',
+      'coming_soon_ai_cutout':
+          'On-device AI cutout will be implemented in the next step.',
+      'coming_soon_animated_stickers':
+          'Animated stickers will be implemented in the next step.',
       'error_cannot_read_image': 'Cannot read image.',
       'error_cannot_encode_webp': 'Cannot encode WebP.',
-      'error_sticker_too_large': 'Sticker is too large (@sizeKbKB). Please crop smaller or choose a simpler image.',
+      'error_sticker_too_large':
+          'Sticker is too large (@sizeKbKB). Please crop smaller or choose a simpler image.',
       'success_saved_to_pack': 'Sticker created and saved to pack "@title".',
 
       // Snackbars / dialogs
@@ -345,9 +380,12 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Error',
       'snackbar_warning_title': 'Warning',
       'snackbar_info_title': 'Info',
-      'error_whatsapp_not_installed': 'WhatsApp is not installed on this device.',
+      'error_whatsapp_not_installed':
+          'WhatsApp is not installed on this device.',
       'success_sent_to_whatsapp': 'Sticker pack has been sent to WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'This sticker pack already exists in WhatsApp.',
+      'success_sticker_updated': 'Sticker pack has been updated in WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'This sticker pack already exists in WhatsApp.',
     },
 
     'zh_CN': {
@@ -417,7 +455,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Selecionar imagem',
-      'permission_photos_required': 'É necessária permissão de acesso às fotos para escolher uma imagem.',
+      'permission_photos_required':
+          'É necessária permissão de acesso às fotos para escolher uma imagem.',
       'grant_permission': 'Conceder permissão',
       'open_settings': 'Abrir configurações',
 
@@ -427,11 +466,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Quadrado',
       'crop_mode_circle': 'Círculo',
       'crop_mode_heart': 'Coração',
-      'coming_soon_ai_cutout': 'O recorte de IA no dispositivo será implementado na próxima etapa.',
-      'coming_soon_animated_stickers': 'Stickers animados serão implementados na próxima etapa.',
+      'coming_soon_ai_cutout':
+          'O recorte de IA no dispositivo será implementado na próxima etapa.',
+      'coming_soon_animated_stickers':
+          'Stickers animados serão implementados na próxima etapa.',
       'error_cannot_read_image': 'Não foi possível ler a imagem.',
       'error_cannot_encode_webp': 'Não foi possível codificar WebP.',
-      'error_sticker_too_large': 'O sticker é muito grande (@sizeKbKB). Por favor, recorte menor ou escolha uma imagem mais simples.',
+      'error_sticker_too_large':
+          'O sticker é muito grande (@sizeKbKB). Por favor, recorte menor ou escolha uma imagem mais simples.',
       'success_saved_to_pack': 'Sticker criado e salvo no pacote "@title".',
 
       // Snackbars / dialogs
@@ -439,15 +481,18 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Erro',
       'snackbar_warning_title': 'Aviso',
       'snackbar_info_title': 'Informação',
-      'error_whatsapp_not_installed': 'O WhatsApp não está instalado neste dispositivo.',
-      'success_sent_to_whatsapp': 'Pacote de stickers foi enviado para o WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Este pacote de stickers já existe no WhatsApp.',
+      'error_whatsapp_not_installed':
+          'O WhatsApp não está instalado neste dispositivo.',
+      'success_sent_to_whatsapp':
+          'Pacote de stickers foi enviado para o WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Este pacote de stickers já existe no WhatsApp.',
     },
 
     'ar_SA': {
       // lang
       'language_setting': 'إعدادات اللغة',
-      
+
       // Setting
       'setting': 'الإعدادات',
       'rate_app': 'تقييم التطبيق',
@@ -474,11 +519,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'مربع',
       'crop_mode_circle': 'دائرة',
       'crop_mode_heart': 'قلب',
-      'coming_soon_ai_cutout': 'سيتم تطبيق القص بالذكاء الاصطناعي على الجهاز في الخطوة التالية.',
-      'coming_soon_animated_stickers': 'سيتم تطبيق الملصقات المتحركة في الخطوة التالية.',
+      'coming_soon_ai_cutout':
+          'سيتم تطبيق القص بالذكاء الاصطناعي على الجهاز في الخطوة التالية.',
+      'coming_soon_animated_stickers':
+          'سيتم تطبيق الملصقات المتحركة في الخطوة التالية.',
       'error_cannot_read_image': 'لا يمكن قراءة الصورة.',
       'error_cannot_encode_webp': 'لا يمكن ترميز WebP.',
-      'error_sticker_too_large': 'الملصق كبير جداً (@sizeKbكيلوبايت). يرجى قصه بشكل أصغر أو اختيار صورة أبسط.',
+      'error_sticker_too_large':
+          'الملصق كبير جداً (@sizeKbكيلوبايت). يرجى قصه بشكل أصغر أو اختيار صورة أبسط.',
       'success_saved_to_pack': 'تم إنشاء الملصق وحفظه في الحزمة "@title".',
 
       // Snackbars / dialogs
@@ -488,7 +536,8 @@ class TranslationService extends Translations {
       'snackbar_info_title': 'معلومات',
       'error_whatsapp_not_installed': 'واتساب غير مثبت على هذا الجهاز.',
       'success_sent_to_whatsapp': 'تم إرسال حزمة الملصقات إلى واتساب.',
-      'warning_pack_already_in_whatsapp': 'حزمة الملصقات هذه موجودة بالفعل في واتساب.',
+      'warning_pack_already_in_whatsapp':
+          'حزمة الملصقات هذه موجودة بالفعل في واتساب.',
     },
 
     'id_ID': {
@@ -511,7 +560,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Pilih gambar',
-      'permission_photos_required': 'Izin akses foto diperlukan untuk memilih gambar.',
+      'permission_photos_required':
+          'Izin akses foto diperlukan untuk memilih gambar.',
       'grant_permission': 'Berikan izin',
       'open_settings': 'Buka pengaturan',
 
@@ -521,11 +571,14 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Persegi',
       'crop_mode_circle': 'Lingkaran',
       'crop_mode_heart': 'Hati',
-      'coming_soon_ai_cutout': 'Pemotongan AI di perangkat akan diterapkan pada langkah berikutnya.',
-      'coming_soon_animated_stickers': 'Stiker animasi akan diterapkan pada langkah berikutnya.',
+      'coming_soon_ai_cutout':
+          'Pemotongan AI di perangkat akan diterapkan pada langkah berikutnya.',
+      'coming_soon_animated_stickers':
+          'Stiker animasi akan diterapkan pada langkah berikutnya.',
       'error_cannot_read_image': 'Tidak dapat membaca gambar.',
       'error_cannot_encode_webp': 'Tidak dapat mengkodekan WebP.',
-      'error_sticker_too_large': 'Stiker terlalu besar (@sizeKbKB). Silakan potong lebih kecil atau pilih gambar yang lebih sederhana.',
+      'error_sticker_too_large':
+          'Stiker terlalu besar (@sizeKbKB). Silakan potong lebih kecil atau pilih gambar yang lebih sederhana.',
       'success_saved_to_pack': 'Stiker dibuat dan disimpan ke paket "@title".',
 
       // Snackbars / dialogs
@@ -533,9 +586,11 @@ class TranslationService extends Translations {
       'snackbar_error_title': 'Error',
       'snackbar_warning_title': 'Peringatan',
       'snackbar_info_title': 'Info',
-      'error_whatsapp_not_installed': 'WhatsApp tidak terinstal di perangkat ini.',
+      'error_whatsapp_not_installed':
+          'WhatsApp tidak terinstal di perangkat ini.',
       'success_sent_to_whatsapp': 'Paket stiker telah dikirim ke WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Paket stiker ini sudah ada di WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Paket stiker ini sudah ada di WhatsApp.',
     },
 
     'hi_IN': {
@@ -558,7 +613,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'छवि चुनें',
-      'permission_photos_required': 'छवि चुनने के लिए फोटो एक्सेस अनुमति आवश्यक है।',
+      'permission_photos_required':
+          'छवि चुनने के लिए फोटो एक्सेस अनुमति आवश्यक है।',
       'grant_permission': 'अनुमति दें',
       'open_settings': 'सेटिंग खोलें',
 
@@ -568,12 +624,16 @@ class TranslationService extends Translations {
       'crop_mode_square': 'वर्ग',
       'crop_mode_circle': 'वृत्त',
       'crop_mode_heart': 'दिल',
-      'coming_soon_ai_cutout': 'ऑन-डिवाइस AI कटआउट अगले चरण में लागू किया जाएगा।',
-      'coming_soon_animated_stickers': 'एनिमेटेड स्टिकर अगले चरण में लागू किए जाएंगे।',
+      'coming_soon_ai_cutout':
+          'ऑन-डिवाइस AI कटआउट अगले चरण में लागू किया जाएगा।',
+      'coming_soon_animated_stickers':
+          'एनिमेटेड स्टिकर अगले चरण में लागू किए जाएंगे।',
       'error_cannot_read_image': 'छवि नहीं पढ़ सकते।',
       'error_cannot_encode_webp': 'WebP एनकोड नहीं कर सकते।',
-      'error_sticker_too_large': 'स्टिकर बहुत बड़ा है (@sizeKbKB)। कृपया छोटा क्रॉप करें या सरल छवि चुनें।',
-      'success_saved_to_pack': 'स्टिकर बनाया गया और "@title" पैक में सहेजा गया।',
+      'error_sticker_too_large':
+          'स्टिकर बहुत बड़ा है (@sizeKbKB)। कृपया छोटा क्रॉप करें या सरल छवि चुनें।',
+      'success_saved_to_pack':
+          'स्टिकर बनाया गया और "@title" पैक में सहेजा गया।',
 
       // Snackbars / dialogs
       'snackbar_success_title': 'सफल',
@@ -582,13 +642,14 @@ class TranslationService extends Translations {
       'snackbar_info_title': 'जानकारी',
       'error_whatsapp_not_installed': 'WhatsApp इस डिवाइस पर इंस्टॉल नहीं है।',
       'success_sent_to_whatsapp': 'स्टिकर पैक WhatsApp को भेजा गया है।',
-      'warning_pack_already_in_whatsapp': 'यह स्टिकर पैक पहले से WhatsApp में मौजूद है।',
+      'warning_pack_already_in_whatsapp':
+          'यह स्टिकर पैक पहले से WhatsApp में मौजूद है।',
     },
 
     'ko_KR': {
       // lang
       'language_setting': '언어 설정',
-      
+
       // Setting
       'setting': '설정',
       'rate_app': '앱 평가',
@@ -619,7 +680,8 @@ class TranslationService extends Translations {
       'coming_soon_animated_stickers': '애니메이션 스티커는 다음 단계에서 구현됩니다.',
       'error_cannot_read_image': '이미지를 읽을 수 없습니다.',
       'error_cannot_encode_webp': 'WebP를 인코딩할 수 없습니다.',
-      'error_sticker_too_large': '스티커가 너무 큽니다(@sizeKbKB). 더 작게 자르거나 더 간단한 이미지를 선택하세요.',
+      'error_sticker_too_large':
+          '스티커가 너무 큽니다(@sizeKbKB). 더 작게 자르거나 더 간단한 이미지를 선택하세요.',
       'success_saved_to_pack': '스티커가 생성되어 "@title" 팩에 저장되었습니다.',
 
       // Snackbars / dialogs
@@ -635,7 +697,7 @@ class TranslationService extends Translations {
     'ja_JP': {
       // lang
       'language_setting': '言語設定',
-      
+
       // Setting
       'setting': '設定',
       'rate_app': 'アプリを評価',
@@ -666,7 +728,8 @@ class TranslationService extends Translations {
       'coming_soon_animated_stickers': 'アニメーションステッカーは次のステップで実装されます。',
       'error_cannot_read_image': '画像を読み込めません。',
       'error_cannot_encode_webp': 'WebPをエンコードできません。',
-      'error_sticker_too_large': 'ステッカーが大きすぎます（@sizeKbKB）。小さくトリミングするか、よりシンプルな画像を選択してください。',
+      'error_sticker_too_large':
+          'ステッカーが大きすぎます（@sizeKbKB）。小さくトリミングするか、よりシンプルな画像を選択してください。',
       'success_saved_to_pack': 'ステッカーが作成され、「@title」パックに保存されました。',
 
       // Snackbars / dialogs
@@ -682,7 +745,7 @@ class TranslationService extends Translations {
     'fr_FR': {
       // lang
       'language_setting': 'PARAMÈTRES DE LANGUE',
-      
+
       // Setting
       'setting': 'PARAMÈTRES',
       'rate_app': 'Évaluer l\'Application',
@@ -699,7 +762,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Sélectionner une image',
-      'permission_photos_required': 'L\'autorisation d\'accès aux photos est requise pour choisir une image.',
+      'permission_photos_required':
+          'L\'autorisation d\'accès aux photos est requise pour choisir une image.',
       'grant_permission': 'Accorder l\'autorisation',
       'open_settings': 'Ouvrir les paramètres',
 
@@ -709,27 +773,34 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Carré',
       'crop_mode_circle': 'Cercle',
       'crop_mode_heart': 'Cœur',
-      'coming_soon_ai_cutout': 'La découpe IA sur appareil sera implémentée à la prochaine étape.',
-      'coming_soon_animated_stickers': 'Les autocollants animés seront implémentés à la prochaine étape.',
+      'coming_soon_ai_cutout':
+          'La découpe IA sur appareil sera implémentée à la prochaine étape.',
+      'coming_soon_animated_stickers':
+          'Les autocollants animés seront implémentés à la prochaine étape.',
       'error_cannot_read_image': 'Impossible de lire l\'image.',
       'error_cannot_encode_webp': 'Impossible d\'encoder WebP.',
-      'error_sticker_too_large': 'L\'autocollant est trop grand (@sizeKbKo). Veuillez recadrer plus petit ou choisir une image plus simple.',
-      'success_saved_to_pack': 'Autocollant créé et enregistré dans le pack "@title".',
+      'error_sticker_too_large':
+          'L\'autocollant est trop grand (@sizeKbKo). Veuillez recadrer plus petit ou choisir une image plus simple.',
+      'success_saved_to_pack':
+          'Autocollant créé et enregistré dans le pack "@title".',
 
       // Snackbars / dialogs
       'snackbar_success_title': 'Succès',
       'snackbar_error_title': 'Erreur',
       'snackbar_warning_title': 'Avertissement',
       'snackbar_info_title': 'Information',
-      'error_whatsapp_not_installed': 'WhatsApp n\'est pas installé sur cet appareil.',
-      'success_sent_to_whatsapp': 'Le pack d\'autocollants a été envoyé à WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Ce pack d\'autocollants existe déjà dans WhatsApp.',
+      'error_whatsapp_not_installed':
+          'WhatsApp n\'est pas installé sur cet appareil.',
+      'success_sent_to_whatsapp':
+          'Le pack d\'autocollants a été envoyé à WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Ce pack d\'autocollants existe déjà dans WhatsApp.',
     },
 
     'tr_TR': {
       // lang
       'language_setting': 'DİL AYARLARI',
-      
+
       // Setting
       'setting': 'AYARLAR',
       'rate_app': 'Uygulamayı Değerlendir',
@@ -746,7 +817,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Resim seç',
-      'permission_photos_required': 'Resim seçmek için fotoğraf erişim izni gereklidir.',
+      'permission_photos_required':
+          'Resim seçmek için fotoğraf erişim izni gereklidir.',
       'grant_permission': 'İzin ver',
       'open_settings': 'Ayarları aç',
 
@@ -756,12 +828,16 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Kare',
       'crop_mode_circle': 'Daire',
       'crop_mode_heart': 'Kalp',
-      'coming_soon_ai_cutout': 'Cihaz üzerinde AI kesimi bir sonraki adımda uygulanacaktır.',
-      'coming_soon_animated_stickers': 'Animasyonlu çıkartmalar bir sonraki adımda uygulanacaktır.',
+      'coming_soon_ai_cutout':
+          'Cihaz üzerinde AI kesimi bir sonraki adımda uygulanacaktır.',
+      'coming_soon_animated_stickers':
+          'Animasyonlu çıkartmalar bir sonraki adımda uygulanacaktır.',
       'error_cannot_read_image': 'Resim okunamıyor.',
       'error_cannot_encode_webp': 'WebP kodlanamıyor.',
-      'error_sticker_too_large': 'Çıkartma çok büyük (@sizeKbKB). Lütfen daha küçük kırpın veya daha basit bir resim seçin.',
-      'success_saved_to_pack': 'Çıkartma oluşturuldu ve "@title" paketine kaydedildi.',
+      'error_sticker_too_large':
+          'Çıkartma çok büyük (@sizeKbKB). Lütfen daha küçük kırpın veya daha basit bir resim seçin.',
+      'success_saved_to_pack':
+          'Çıkartma oluşturuldu ve "@title" paketine kaydedildi.',
 
       // Snackbars / dialogs
       'snackbar_success_title': 'Başarılı',
@@ -770,13 +846,14 @@ class TranslationService extends Translations {
       'snackbar_info_title': 'Bilgi',
       'error_whatsapp_not_installed': 'WhatsApp bu cihazda yüklü değil.',
       'success_sent_to_whatsapp': 'Çıkartma paketi WhatsApp\'a gönderildi.',
-      'warning_pack_already_in_whatsapp': 'Bu çıkartma paketi WhatsApp\'ta zaten mevcut.',
+      'warning_pack_already_in_whatsapp':
+          'Bu çıkartma paketi WhatsApp\'ta zaten mevcut.',
     },
 
     'es_ES': {
       // lang
       'language_setting': 'CONFIGURACIÓN DE IDIOMA',
-      
+
       // Setting
       'setting': 'CONFIGURACIÓN',
       'rate_app': 'Calificar Aplicación',
@@ -793,7 +870,8 @@ class TranslationService extends Translations {
 
       // Select image
       'select_image_title': 'Seleccionar imagen',
-      'permission_photos_required': 'Se requiere permiso de acceso a fotos para elegir una imagen.',
+      'permission_photos_required':
+          'Se requiere permiso de acceso a fotos para elegir una imagen.',
       'grant_permission': 'Otorgar permiso',
       'open_settings': 'Abrir configuración',
 
@@ -803,21 +881,28 @@ class TranslationService extends Translations {
       'crop_mode_square': 'Cuadrado',
       'crop_mode_circle': 'Círculo',
       'crop_mode_heart': 'Corazón',
-      'coming_soon_ai_cutout': 'El recorte con IA en el dispositivo se implementará en el siguiente paso.',
-      'coming_soon_animated_stickers': 'Los stickers animados se implementarán en el siguiente paso.',
+      'coming_soon_ai_cutout':
+          'El recorte con IA en el dispositivo se implementará en el siguiente paso.',
+      'coming_soon_animated_stickers':
+          'Los stickers animados se implementarán en el siguiente paso.',
       'error_cannot_read_image': 'No se puede leer la imagen.',
       'error_cannot_encode_webp': 'No se puede codificar WebP.',
-      'error_sticker_too_large': 'El sticker es demasiado grande (@sizeKbKB). Por favor, recorta más pequeño o elige una imagen más simple.',
-      'success_saved_to_pack': 'Sticker creado y guardado en el paquete "@title".',
+      'error_sticker_too_large':
+          'El sticker es demasiado grande (@sizeKbKB). Por favor, recorta más pequeño o elige una imagen más simple.',
+      'success_saved_to_pack':
+          'Sticker creado y guardado en el paquete "@title".',
 
       // Snackbars / dialogs
       'snackbar_success_title': 'Éxito',
       'snackbar_error_title': 'Error',
       'snackbar_warning_title': 'Advertencia',
       'snackbar_info_title': 'Información',
-      'error_whatsapp_not_installed': 'WhatsApp no está instalado en este dispositivo.',
-      'success_sent_to_whatsapp': 'El paquete de stickers se ha enviado a WhatsApp.',
-      'warning_pack_already_in_whatsapp': 'Este paquete de stickers ya existe en WhatsApp.',
+      'error_whatsapp_not_installed':
+          'WhatsApp no está instalado en este dispositivo.',
+      'success_sent_to_whatsapp':
+          'El paquete de stickers se ha enviado a WhatsApp.',
+      'warning_pack_already_in_whatsapp':
+          'Este paquete de stickers ya existe en WhatsApp.',
     },
   };
 }

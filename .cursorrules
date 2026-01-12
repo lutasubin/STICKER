@@ -3,7 +3,7 @@
 ## 📋 Thông tin dự án
 
 Đây là ứng dụng Flutter Sticker Maker cho WhatsApp với:
-- **Framework**: Flutter SDK ^3.7.2
+- **Framework**: Flutter SDK ^3.29.3
 - **State Management**: GetX (^4.7.3)
 - **Storage**: GetStorage (^2.1.1)
 - **AI**: TensorFlow Lite (background removal với u2netp_320.tflite)

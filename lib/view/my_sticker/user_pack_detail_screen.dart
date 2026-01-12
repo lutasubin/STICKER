@@ -27,6 +27,7 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
   bool _changed = false;
   bool _isInstalled = false;
   bool _isChecking = true;
+  bool _needsUpdate = false; // Track nếu pack cần update
 
   @override
   void initState() {
@@ -35,20 +36,46 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
     _checkInstalledStatus();
   }
 
-  Future<void> _checkInstalledStatus() async {
+  Future<void> _checkInstalledStatus({bool updateNeedsUpdate = true}) async {
     try {
       final installed = await _whatsApp.isStickerPackInstalled(_pack.id);
+      final service = Get.find<UserStickerPackService>();
+      // Reload pack để lấy lastModifiedAtMs mới nhất
+      final refreshedPack = service.getById(_pack.id);
+      if (refreshedPack != null) {
+        _pack = refreshedPack;
+      }
+
+      // Nếu pack đã được install nhưng installedAt chưa được lưu, tự động lưu
+      if (installed) {
+        final installedAt = service.getPackInstalledAt(_pack.id);
+        if (installedAt == null) {
+          // Pack đã được install nhưng chưa có record, tự động mark as installed
+          AppLogger.i(
+            '[UserPackDetailScreen] Pack already installed but no record found, marking as installed: ${_pack.id}',
+          );
+          service.markPackAsInstalled(_pack.id);
+        }
+      }
+
+      final needsUpdate =
+          updateNeedsUpdate ? service.packNeedsUpdate(_pack.id) : _needsUpdate;
+      AppLogger.i(
+        '[UserPackDetailScreen] Check installed status: ${_pack.id}, '
+        'installed=$installed, needsUpdate=$needsUpdate, '
+        'lastModifiedAtMs=${_pack.lastModifiedAtMs}',
+      );
       if (mounted) {
         setState(() {
           _isInstalled = installed;
           _isChecking = false;
+          if (updateNeedsUpdate) {
+            _needsUpdate = needsUpdate;
+          }
         });
       }
     } catch (e) {
-      AppLogger.e(
-        '[UserPackDetailScreen] Failed to check installed status',
-        e,
-      );
+      AppLogger.e('[UserPackDetailScreen] Failed to check installed status', e);
       if (mounted) {
         setState(() {
           _isChecking = false;
@@ -80,10 +107,18 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
     final service = Get.find<UserStickerPackService>();
     final refreshed = service.getById(_pack.id);
     if (refreshed != null) {
+      final needsUpdate = service.packNeedsUpdate(refreshed.id);
+      AppLogger.i(
+        '[UserPackDetailScreen] Reloading pack: ${refreshed.id}, '
+        'lastModifiedAtMs=${refreshed.lastModifiedAtMs}, needsUpdate=$needsUpdate',
+      );
       setState(() {
         _pack = refreshed;
         _changed = true;
+        _needsUpdate = needsUpdate;
       });
+      // Kiểm tra lại trạng thái installed sau khi reload (không update needsUpdate vì đã tính ở trên)
+      _checkInstalledStatus(updateNeedsUpdate: false);
     }
   }
 
@@ -113,15 +148,38 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
 
       if (result == 'cancelled') {
         return;
-      } else if (result == 'already_added' || result == 'add_successful' || result == 'success') {
+      } else if (result == 'already_added' ||
+          result == 'add_successful' ||
+          result == 'success') {
+        // Reload pack để lấy lastModifiedAtMs mới nhất
+        final service = Get.find<UserStickerPackService>();
+        final refreshedPack = service.getById(_pack.id);
+        if (refreshedPack != null) {
+          _pack = refreshedPack;
+        }
+
+        // Kiểm tra xem đây là update hay add mới
+        final wasUpdating = _needsUpdate;
+
+        // Đánh dấu pack đã được thêm vào WhatsApp
+        // Lưu lastModifiedAtMs hiện tại của pack làm installedAt
+        // Để sau này nếu pack được chỉnh sửa, lastModifiedAtMs sẽ > installedAt
+        service.markPackAsInstalled(_pack.id);
+
         // Cập nhật trạng thái đã được thêm vào
         if (mounted) {
           setState(() {
             _isInstalled = true;
+            _needsUpdate =
+                false; // Vừa mới install/update, không cần update nữa
           });
         }
-        
-        if (result == 'already_added') {
+
+        // Hiển thị thông báo phù hợp
+        if (wasUpdating) {
+          // Đây là update pack (pack cũ đã được WhatsApp tự động replace)
+          AppDialogs.showStickerUpdatedSuccess();
+        } else if (result == 'already_added') {
           AppDialogs.showStickerAlreadyAdded();
         } else {
           AppDialogs.showStickerAddedSuccess();
@@ -155,9 +213,11 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
     final service = Get.find<UserStickerPackService>();
     final updated = service.renamePack(packId: _pack.id, newTitle: result);
     if (updated != null) {
+      final needsUpdate = service.packNeedsUpdate(updated.id);
       setState(() {
         _pack = updated;
         _changed = true;
+        _needsUpdate = needsUpdate;
       });
     }
   }
@@ -186,10 +246,7 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
         Get.back();
         await Get.toNamed(
           AppRoutes.editSticker,
-          arguments: {
-            'pack': _pack,
-            'stickerUri': stickerUri,
-          },
+          arguments: {'pack': _pack, 'stickerUri': stickerUri},
         );
         if (!mounted) return;
         _reloadFromStorage();
@@ -237,11 +294,39 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
               onAddSticker: _addSticker,
               onOpenSticker: _openStickerViewer,
             ),
-            UserPackExportButton(
-              isSending: _isSending,
-              onPressed: _exportPack,
-              isInstalled: _isInstalled,
-              isChecking: _isChecking,
+            Builder(
+              builder: (context) {
+                // Tính lại needsUpdate mỗi lần build để đảm bảo luôn đúng
+                final service = Get.find<UserStickerPackService>();
+                // Reload pack để lấy lastModifiedAtMs mới nhất
+                final refreshedPack = service.getById(_pack.id);
+                final currentPack = refreshedPack ?? _pack;
+                final currentNeedsUpdate = service.packNeedsUpdate(
+                  currentPack.id,
+                );
+
+                // Update state nếu giá trị thay đổi
+                if (currentNeedsUpdate != _needsUpdate && mounted) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() {
+                        _needsUpdate = currentNeedsUpdate;
+                        if (refreshedPack != null) {
+                          _pack = refreshedPack;
+                        }
+                      });
+                    }
+                  });
+                }
+
+                return UserPackExportButton(
+                  isSending: _isSending,
+                  onPressed: _exportPack,
+                  isInstalled: _isInstalled,
+                  isChecking: _isChecking,
+                  needsUpdate: currentNeedsUpdate,
+                );
+              },
             ),
           ],
         ),

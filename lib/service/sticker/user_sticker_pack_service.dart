@@ -6,6 +6,7 @@ import 'package:sticker_app/service/splash_service/storage_service.dart';
 
 class UserStickerPackService extends GetxService {
   static const String _keyUserStickerPacks = 'user_sticker_packs';
+  static const String _keyInstalledAtPrefix = 'pack_installed_at_';
 
   late final StorageService _storage;
 
@@ -21,14 +22,19 @@ class UserStickerPackService extends GetxService {
     try {
       final raw = _storage.read(_keyUserStickerPacks);
       if (raw is! List) {
-        AppLogger.d('[UserStickerPackService] No packs found, returning empty list');
+        AppLogger.d(
+          '[UserStickerPackService] No packs found, returning empty list',
+        );
         return <UserStickerPack>[];
       }
 
-      final packs = raw
-          .whereType<Map>()
-          .map((e) => UserStickerPack.fromJson(Map<String, dynamic>.from(e)))
-          .toList();
+      final packs =
+          raw
+              .whereType<Map>()
+              .map(
+                (e) => UserStickerPack.fromJson(Map<String, dynamic>.from(e)),
+              )
+              .toList();
       AppLogger.i('[UserStickerPackService] Retrieved ${packs.length} packs');
       return packs;
     } catch (e, stackTrace) {
@@ -48,7 +54,9 @@ class UserStickerPackService extends GetxService {
         _keyUserStickerPacks,
         packs.map((e) => e.toJson()).toList(),
       );
-      AppLogger.i('[UserStickerPackService] Successfully saved ${packs.length} packs');
+      AppLogger.i(
+        '[UserStickerPackService] Successfully saved ${packs.length} packs',
+      );
     } catch (e, stackTrace) {
       AppLogger.e(
         '[UserStickerPackService] Failed to save packs',
@@ -90,6 +98,7 @@ class UserStickerPackService extends GetxService {
         id: id,
         title: title,
         createdAtMs: now,
+        lastModifiedAtMs: now,
         stickerFileUris: const [],
       );
 
@@ -116,6 +125,7 @@ class UserStickerPackService extends GetxService {
       id: id,
       title: title,
       createdAtMs: now,
+      lastModifiedAtMs: now,
       stickerFileUris: const [],
     );
   }
@@ -149,8 +159,10 @@ class UserStickerPackService extends GetxService {
       }
 
       final current = packs[index];
+      final now = DateTime.now().millisecondsSinceEpoch;
       final updated = current.copyWith(
         stickerFileUris: [stickerFileUri, ...current.stickerFileUris],
+        lastModifiedAtMs: now,
       );
 
       final next = [...packs];
@@ -183,7 +195,8 @@ class UserStickerPackService extends GetxService {
     if (index < 0) return null;
 
     final current = packs[index];
-    final updated = current.copyWith(title: trimmed);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final updated = current.copyWith(title: trimmed, lastModifiedAtMs: now);
 
     final next = [...packs];
     next[index] = updated;
@@ -191,16 +204,17 @@ class UserStickerPackService extends GetxService {
     return updated;
   }
 
-  bool deletePack({
-    required String packId,
-    bool deleteFiles = false,
-  }) {
-    AppLogger.i('[UserStickerPackService] Deleting pack: $packId, deleteFiles=$deleteFiles');
+  bool deletePack({required String packId, bool deleteFiles = false}) {
+    AppLogger.i(
+      '[UserStickerPackService] Deleting pack: $packId, deleteFiles=$deleteFiles',
+    );
     try {
       final packs = getAll();
       final index = packs.indexWhere((p) => p.id == packId);
       if (index < 0) {
-        AppLogger.w('[UserStickerPackService] Pack not found for deletion: $packId');
+        AppLogger.w(
+          '[UserStickerPackService] Pack not found for deletion: $packId',
+        );
         return false;
       }
 
@@ -209,7 +223,9 @@ class UserStickerPackService extends GetxService {
       saveAll(next);
 
       if (deleteFiles) {
-        AppLogger.d('[UserStickerPackService] Deleting ${pack.stickerFileUris.length} files');
+        AppLogger.d(
+          '[UserStickerPackService] Deleting ${pack.stickerFileUris.length} files',
+        );
         var deletedCount = 0;
         for (final uri in pack.stickerFileUris) {
           try {
@@ -229,7 +245,9 @@ class UserStickerPackService extends GetxService {
         AppLogger.i('[UserStickerPackService] Deleted $deletedCount files');
       }
 
-      AppLogger.i('[UserStickerPackService] Pack deleted successfully: $packId');
+      AppLogger.i(
+        '[UserStickerPackService] Pack deleted successfully: $packId',
+      );
       return true;
     } catch (e, stackTrace) {
       AppLogger.e(
@@ -261,7 +279,11 @@ class UserStickerPackService extends GetxService {
       final nextUris = [...current.stickerFileUris]
         ..removeWhere((u) => u == stickerFileUri);
 
-      final updated = current.copyWith(stickerFileUris: nextUris);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final updated = current.copyWith(
+        stickerFileUris: nextUris,
+        lastModifiedAtMs: now,
+      );
       final next = [...packs];
       next[index] = updated;
       saveAll(next);
@@ -271,7 +293,9 @@ class UserStickerPackService extends GetxService {
           final file = File.fromUri(Uri.parse(stickerFileUri));
           if (file.existsSync()) {
             file.deleteSync();
-            AppLogger.d('[UserStickerPackService] File deleted: $stickerFileUri');
+            AppLogger.d(
+              '[UserStickerPackService] File deleted: $stickerFileUri',
+            );
           }
         } catch (e, stackTrace) {
           AppLogger.w(
@@ -307,11 +331,16 @@ class UserStickerPackService extends GetxService {
     if (index < 0) return null;
 
     final current = packs[index];
-    final nextUris = current.stickerFileUris
-        .map((u) => u == oldStickerFileUri ? newStickerFileUri : u)
-        .toList();
+    final nextUris =
+        current.stickerFileUris
+            .map((u) => u == oldStickerFileUri ? newStickerFileUri : u)
+            .toList();
 
-    final updated = current.copyWith(stickerFileUris: nextUris);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final updated = current.copyWith(
+      stickerFileUris: nextUris,
+      lastModifiedAtMs: now,
+    );
     final next = [...packs];
     next[index] = updated;
     saveAll(next);
@@ -326,5 +355,63 @@ class UserStickerPackService extends GetxService {
     }
 
     return updated;
+  }
+
+  /// Lưu thời điểm pack được thêm vào WhatsApp
+  /// Lưu lastModifiedAtMs của pack hiện tại (không phải thời điểm hiện tại)
+  /// để đảm bảo pack hiện tại đã được sync với WhatsApp
+  void markPackAsInstalled(String packId) {
+    final pack = getById(packId);
+    if (pack == null) {
+      AppLogger.w(
+        '[UserStickerPackService] Pack not found when marking as installed: $packId',
+      );
+      return;
+    }
+
+    // Lưu lastModifiedAtMs của pack hiện tại làm installedAt
+    // Điều này đảm bảo pack hiện tại đã được sync với WhatsApp
+    // Nếu sau này pack được chỉnh sửa, lastModifiedAtMs sẽ > installedAt
+    final installedAt = pack.lastModifiedAtMs;
+    final key = '$_keyInstalledAtPrefix$packId';
+    _storage.write(key, installedAt);
+    AppLogger.d(
+      '[UserStickerPackService] Marked pack as installed: $packId, installedAt=$installedAt, lastModifiedAtMs=${pack.lastModifiedAtMs}',
+    );
+  }
+
+  /// Lấy thời điểm pack được thêm vào WhatsApp lần cuối
+  int? getPackInstalledAt(String packId) {
+    final key = '$_keyInstalledAtPrefix$packId';
+    final value = _storage.read(key);
+    if (value is num) {
+      return value.toInt();
+    }
+    return null;
+  }
+
+  /// Kiểm tra xem pack có cần update không (đã được chỉnh sửa sau khi install)
+  bool packNeedsUpdate(String packId) {
+    final pack = getById(packId);
+    if (pack == null) {
+      AppLogger.d(
+        '[UserStickerPackService] Pack not found for needsUpdate check: $packId',
+      );
+      return false;
+    }
+
+    final installedAt = getPackInstalledAt(packId);
+    if (installedAt == null) {
+      AppLogger.d('[UserStickerPackService] Pack not installed yet: $packId');
+      return false; // Chưa được install
+    }
+
+    // Nếu lastModifiedAtMs > installedAt, pack đã được chỉnh sửa sau khi install
+    final needsUpdate = pack.lastModifiedAtMs > installedAt;
+    AppLogger.i(
+      '[UserStickerPackService] Pack needsUpdate check: $packId, '
+      'lastModifiedAtMs=${pack.lastModifiedAtMs}, installedAt=$installedAt, needsUpdate=$needsUpdate',
+    );
+    return needsUpdate;
   }
 }

@@ -6,10 +6,7 @@ import 'package:get/get.dart';
 enum _TextEditorTab { text, stroke, shadow, background }
 
 class TextEditScreen extends StatefulWidget {
-  const TextEditScreen({
-    super.key,
-    required this.controller,
-  });
+  const TextEditScreen({super.key, required this.controller});
 
   final PainterController controller;
 
@@ -45,7 +42,8 @@ class _TextEditScreenState extends State<TextEditScreen> {
   Color _backgroundColor = Colors.transparent;
   double _opacity = 1.0;
 
-  Set<ObjectDrawableAssist> get _defaultTextAssists => ObjectDrawableAssist.values.toSet();
+  Set<ObjectDrawableAssist> get _defaultTextAssists =>
+      ObjectDrawableAssist.values.toSet();
 
   static const _fonts = [
     'Roboto',
@@ -266,7 +264,9 @@ class _TextEditScreenState extends State<TextEditScreen> {
 
     _syncingFromSelection = true;
     _textController.text = selected.text;
-    _textController.selection = TextSelection.collapsed(offset: _textController.text.length);
+    _textController.selection = TextSelection.collapsed(
+      offset: _textController.text.length,
+    );
     _syncingFromSelection = false;
   }
 
@@ -319,34 +319,48 @@ class _TextEditScreenState extends State<TextEditScreen> {
     );
   }
 
-  void _ensureEditingDrawable() {
-    final selected = widget.controller.selectedObjectDrawable;
-    if (selected is TextDrawable) {
-      _editingDrawable = selected;
-      if (_textController.text.isEmpty) {
-        _textController.text = selected.text;
-      }
-      return;
-    }
-
-    if (_editingDrawable != null) {
-      if (!_containsDrawable(_editingDrawable!)) {
-        _editingDrawable = null;
-      } else if (!_isTypingMode) {
-        widget.controller.selectObjectDrawable(_editingDrawable!);
-        return;
-      } else {
+  void _ensureEditingDrawable({bool createNew = false}) {
+    // Nếu createNew = true, luôn tạo text mới
+    if (!createNew) {
+      final selected = widget.controller.selectedObjectDrawable;
+      if (selected is TextDrawable) {
+        _editingDrawable = selected;
+        if (_textController.text.isEmpty) {
+          _textController.text = selected.text;
+        }
         return;
       }
+
+      if (_editingDrawable != null) {
+        if (!_containsDrawable(_editingDrawable!)) {
+          _editingDrawable = null;
+        } else if (!_isTypingMode) {
+          widget.controller.selectObjectDrawable(_editingDrawable!);
+          return;
+        } else {
+          return;
+        }
+      }
     }
 
+    // Tạo text mới
     final canvasSize = _canvasSize;
-    final initialPosition = canvasSize == null
-        ? Offset.zero
-        : Offset(canvasSize.width / 2, canvasSize.height / 2);
+    // Vị trí mặc định: giữa canvas, nhưng offset một chút để tránh trùng với text cũ
+    final existingTexts = _getAllTextDrawables();
+    final offsetY =
+        existingTexts.length * 40.0; // Offset theo số lượng text đã có
+    final initialPosition =
+        canvasSize == null
+            ? Offset.zero
+            : Offset(
+              canvasSize.width / 2,
+              (canvasSize.height / 2) +
+                  offsetY -
+                  (existingTexts.isNotEmpty ? 20 : 0),
+            );
 
     final drawable = TextDrawable(
-      text: _textController.text,
+      text: _textController.text.isEmpty ? 'Text' : _textController.text,
       position: initialPosition,
       rotation: 0,
       scale: 1,
@@ -362,6 +376,40 @@ class _TextEditScreenState extends State<TextEditScreen> {
       widget.controller.selectObjectDrawable(drawable);
     }
     _editingDrawable = drawable;
+
+    // Nếu text controller rỗng, set text mặc định
+    if (_textController.text.isEmpty) {
+      _textController.text = 'Text';
+      _textController.selection = TextSelection.collapsed(offset: 4);
+    }
+  }
+
+  /// Lấy tất cả text drawables hiện có
+  List<TextDrawable> _getAllTextDrawables() {
+    dynamic list;
+    try {
+      final value = (widget.controller as dynamic).value;
+      list = (value as dynamic).drawables;
+    } catch (_) {}
+    list ??= () {
+      try {
+        return (widget.controller as dynamic).drawables;
+      } catch (_) {
+        return null;
+      }
+    }();
+    list ??= () {
+      try {
+        return (widget.controller as dynamic).objectDrawables;
+      } catch (_) {
+        return null;
+      }
+    }();
+
+    if (list is Iterable) {
+      return list.whereType<TextDrawable>().toList();
+    }
+    return [];
   }
 
   void _replaceEditingDrawable(TextDrawable next) {
@@ -550,40 +598,58 @@ class _TextEditScreenState extends State<TextEditScreen> {
                 child: Center(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final maxSize = constraints.biggest.shortestSide;
-                      final size = (maxSize * 0.72).clamp(220.0, 360.0);
-                      _canvasSize = Size.square(size);
-                      return Container(
-                        width: size,
-                        height: size,
-                        decoration: BoxDecoration(
-                        ),
+                      // Dùng canvas size cố định 512x512 giống như edit_sticker_screen
+                      const canvasSize = 512.0;
+                      final screenSize = MediaQuery.sizeOf(context);
+                      final maxSize = screenSize.shortestSide * 0.85;
+                      final displaySize = canvasSize.clamp(200.0, maxSize);
+
+                      // Lưu canvas size để dùng khi tạo text mới
+                      _canvasSize = Size.square(canvasSize);
+
+                      // Tính scale ratio để scale từ canvas size (512x512) lên display size
+                      final scaleRatio = displaySize / canvasSize;
+
+                      return SizedBox(
+                        width: displaySize,
+                        height: displaySize,
                         child: _CheckerboardBackground(
                           child: Theme(
                             data: Theme.of(context).copyWith(
-                              colorScheme: Theme.of(context).colorScheme.copyWith(
-                                    primary: const Color(0xFF2196F3),
-                                  ),
+                              colorScheme: Theme.of(context).colorScheme
+                                  .copyWith(primary: const Color(0xFF2196F3)),
                             ),
-                            child: FlutterPainter(
-                              controller: widget.controller,
-                              onDrawableDeleted: (d) {
-                                if (d is! TextDrawable) return;
-                                if (!mounted) return;
-                                if (identical(d, _editingDrawable)) {
-                                  _editingDrawable = null;
-                                  _syncingFromSelection = true;
-                                  _textController.clear();
-                                  _syncingFromSelection = false;
-                                  _textFocusNode.unfocus();
-                                }
-                              },
-                              onSelectedObjectDrawableChanged: (d) {
-                                if (!mounted) return;
-                                if (d is TextDrawable) {
-                                  _editingDrawable = d;
-                                }
-                              },
+                            child: Center(
+                              // Dùng Transform.scale với alignment center để scale từ 512x512 lên displaySize
+                              // Đảm bảo FlutterPainter luôn dùng tọa độ 512x512, chỉ scale để hiển thị
+                              child: Transform.scale(
+                                scale: scaleRatio,
+                                alignment: Alignment.center,
+                                child: SizedBox(
+                                  width: canvasSize,
+                                  height: canvasSize,
+                                  child: FlutterPainter(
+                                    controller: widget.controller,
+                                    onDrawableDeleted: (d) {
+                                      if (d is! TextDrawable) return;
+                                      if (!mounted) return;
+                                      if (identical(d, _editingDrawable)) {
+                                        _editingDrawable = null;
+                                        _syncingFromSelection = true;
+                                        _textController.clear();
+                                        _syncingFromSelection = false;
+                                        _textFocusNode.unfocus();
+                                      }
+                                    },
+                                    onSelectedObjectDrawableChanged: (d) {
+                                      if (!mounted) return;
+                                      if (d is TextDrawable) {
+                                        _editingDrawable = d;
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -595,7 +661,8 @@ class _TextEditScreenState extends State<TextEditScreen> {
               _BottomToolbar(
                 tab: _tab,
                 keyboardActive: _textFocusNode.hasFocus,
-                textSelected: widget.controller.selectedObjectDrawable is TextDrawable,
+                textSelected:
+                    widget.controller.selectedObjectDrawable is TextDrawable,
                 onTabChanged: (t) {
                   setState(() => _tab = t);
                   _textFocusNode.unfocus();
@@ -608,58 +675,77 @@ class _TextEditScreenState extends State<TextEditScreen> {
                   }
                 },
                 onKeyboardPressed: _toggleKeyboard,
+                onAddText: () {
+                  // Tạo text mới
+                  _enqueueControllerMutation(() {
+                    // Clear text controller để tạo text mới
+                    _textController.clear();
+                    _editingDrawable = null;
+                    // Deselect text hiện tại nếu có
+                    _deselectObject();
+                    // Tạo text mới ở vị trí giữa canvas với offset
+                    _ensureEditingDrawable(createNew: true);
+                    // Focus vào keyboard để user có thể gõ ngay
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) {
+                        _textFocusNode.requestFocus();
+                      }
+                    });
+                  });
+                },
               ),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 150),
-                child: _textFocusNode.hasFocus
-                    ? const SizedBox.shrink()
-                    : _BottomPanel(
-                        tab: _tab,
-                        textController: _textController,
-                        focusNode: _textFocusNode,
-                        selectedFont: _selectedFont,
-                        fonts: _fonts,
-                        onFontSelected: (f) {
-                          setState(() => _selectedFont = f);
-                          _applyStyleToSelected();
-                        },
-                        palette: _palette,
-                        textColor: _textColor,
-                        onTextColorChanged: (c) {
-                          setState(() => _textColor = c);
-                          _applyStyleToSelected();
-                        },
-                        strokeColor: _strokeColor,
-                        onStrokeColorChanged: (c) {
-                          setState(() => _strokeColor = c);
-                          _applyStyleToSelected();
-                        },
-                        strokeWidth: _strokeWidth,
-                        onStrokeWidthChanged: (v) {
-                          setState(() => _strokeWidth = v);
-                          _applyStyleToSelected();
-                        },
-                        shadowColor: _shadowColor,
-                        onShadowColorChanged: (c) {
-                          setState(() => _shadowColor = c);
-                          _applyStyleToSelected();
-                        },
-                        shadowBlur: _shadowBlur,
-                        onShadowBlurChanged: (v) {
-                          setState(() => _shadowBlur = v);
-                          _applyStyleToSelected();
-                        },
-                        backgroundColor: _backgroundColor,
-                        onBackgroundColorChanged: (c) {
-                          setState(() => _backgroundColor = c);
-                          _applyStyleToSelected();
-                        },
-                        opacity: _opacity,
-                        onOpacityChanged: (v) {
-                          setState(() => _opacity = v);
-                          _applyStyleToSelected();
-                        },
-                      ),
+                child:
+                    _textFocusNode.hasFocus
+                        ? const SizedBox.shrink()
+                        : _BottomPanel(
+                          tab: _tab,
+                          textController: _textController,
+                          focusNode: _textFocusNode,
+                          selectedFont: _selectedFont,
+                          fonts: _fonts,
+                          onFontSelected: (f) {
+                            setState(() => _selectedFont = f);
+                            _applyStyleToSelected();
+                          },
+                          palette: _palette,
+                          textColor: _textColor,
+                          onTextColorChanged: (c) {
+                            setState(() => _textColor = c);
+                            _applyStyleToSelected();
+                          },
+                          strokeColor: _strokeColor,
+                          onStrokeColorChanged: (c) {
+                            setState(() => _strokeColor = c);
+                            _applyStyleToSelected();
+                          },
+                          strokeWidth: _strokeWidth,
+                          onStrokeWidthChanged: (v) {
+                            setState(() => _strokeWidth = v);
+                            _applyStyleToSelected();
+                          },
+                          shadowColor: _shadowColor,
+                          onShadowColorChanged: (c) {
+                            setState(() => _shadowColor = c);
+                            _applyStyleToSelected();
+                          },
+                          shadowBlur: _shadowBlur,
+                          onShadowBlurChanged: (v) {
+                            setState(() => _shadowBlur = v);
+                            _applyStyleToSelected();
+                          },
+                          backgroundColor: _backgroundColor,
+                          onBackgroundColorChanged: (c) {
+                            setState(() => _backgroundColor = c);
+                            _applyStyleToSelected();
+                          },
+                          opacity: _opacity,
+                          onOpacityChanged: (v) {
+                            setState(() => _opacity = v);
+                            _applyStyleToSelected();
+                          },
+                        ),
               ),
             ],
           ),
@@ -686,6 +772,7 @@ class _BottomToolbar extends StatelessWidget {
     required this.textSelected,
     required this.onTabChanged,
     required this.onKeyboardPressed,
+    required this.onAddText,
   });
 
   final _TextEditorTab tab;
@@ -693,6 +780,7 @@ class _BottomToolbar extends StatelessWidget {
   final bool textSelected;
   final ValueChanged<_TextEditorTab> onTabChanged;
   final VoidCallback onKeyboardPressed;
+  final VoidCallback onAddText;
 
   @override
   Widget build(BuildContext context) {
@@ -703,11 +791,18 @@ class _BottomToolbar extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
+            // Nút Add Text - tạo text mới
+            IconButton(
+              onPressed: onAddText,
+              icon: const Icon(Icons.add, color: Color(0xFF00C979)),
+              tooltip: 'Thêm text mới',
+            ),
             IconButton(
               onPressed: onKeyboardPressed,
               icon: Icon(
                 Icons.keyboard,
-                color: keyboardActive ? const Color(0xFF00C979) : Colors.black54,
+                color:
+                    keyboardActive ? const Color(0xFF00C979) : Colors.black54,
               ),
             ),
             _ToolIcon(
@@ -751,10 +846,7 @@ class _ToolIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = selected ? const Color(0xFF00C979) : Colors.black54;
-    return IconButton(
-      onPressed: onTap,
-      icon: Icon(icon, color: color),
-    );
+    return IconButton(onPressed: onTap, icon: Icon(icon, color: color));
   }
 }
 
@@ -825,54 +917,54 @@ class _BottomPanel extends StatelessWidget {
         ),
         child: switch (tab) {
           _TextEditorTab.text => _TextTab(
-              textController: textController,
-              focusNode: focusNode,
-              selectedFont: selectedFont,
-              fonts: fonts,
-              onFontSelected: onFontSelected,
-              palette: palette,
-              textColor: textColor,
-              onTextColorChanged: onTextColorChanged,
-            ),
+            textController: textController,
+            focusNode: focusNode,
+            selectedFont: selectedFont,
+            fonts: fonts,
+            onFontSelected: onFontSelected,
+            palette: palette,
+            textColor: textColor,
+            onTextColorChanged: onTextColorChanged,
+          ),
           _TextEditorTab.stroke => _EffectsTab(
-              title: 'Đường viền',
-              palette: palette,
-              selectedColor: strokeColor,
-              onColorSelected: onStrokeColorChanged,
-              sliderLabel: 'Độ dày',
-              sliderValue: strokeWidth,
-              sliderMin: 0,
-              sliderMax: 10,
-              onSliderChanged: onStrokeWidthChanged,
-              opacity: opacity,
-              onOpacityChanged: onOpacityChanged,
-            ),
+            title: 'Đường viền',
+            palette: palette,
+            selectedColor: strokeColor,
+            onColorSelected: onStrokeColorChanged,
+            sliderLabel: 'Độ dày',
+            sliderValue: strokeWidth,
+            sliderMin: 0,
+            sliderMax: 10,
+            onSliderChanged: onStrokeWidthChanged,
+            opacity: opacity,
+            onOpacityChanged: onOpacityChanged,
+          ),
           _TextEditorTab.shadow => _EffectsTab(
-              title: 'Bóng',
-              palette: palette,
-              selectedColor: shadowColor,
-              onColorSelected: onShadowColorChanged,
-              sliderLabel: 'Độ mờ',
-              sliderValue: shadowBlur,
-              sliderMin: 0,
-              sliderMax: 10,
-              onSliderChanged: onShadowBlurChanged,
-              opacity: opacity,
-              onOpacityChanged: onOpacityChanged,
-            ),
+            title: 'Bóng',
+            palette: palette,
+            selectedColor: shadowColor,
+            onColorSelected: onShadowColorChanged,
+            sliderLabel: 'Độ mờ',
+            sliderValue: shadowBlur,
+            sliderMin: 0,
+            sliderMax: 10,
+            onSliderChanged: onShadowBlurChanged,
+            opacity: opacity,
+            onOpacityChanged: onOpacityChanged,
+          ),
           _TextEditorTab.background => _EffectsTab(
-              title: 'Nền',
-              palette: palette,
-              selectedColor: backgroundColor,
-              onColorSelected: onBackgroundColorChanged,
-              sliderLabel: 'Độ mờ',
-              sliderValue: opacity,
-              sliderMin: 0,
-              sliderMax: 1,
-              onSliderChanged: onOpacityChanged,
-              opacity: opacity,
-              onOpacityChanged: onOpacityChanged,
-            ),
+            title: 'Nền',
+            palette: palette,
+            selectedColor: backgroundColor,
+            onColorSelected: onBackgroundColorChanged,
+            sliderLabel: 'Độ mờ',
+            sliderValue: opacity,
+            sliderMin: 0,
+            sliderMax: 1,
+            onSliderChanged: onOpacityChanged,
+            opacity: opacity,
+            onOpacityChanged: onOpacityChanged,
+          ),
         },
       ),
     );
@@ -928,7 +1020,10 @@ class _TextTab extends StatelessWidget {
                     color: c,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: selected ? const Color(0xFF00C979) : const Color(0xFFDDDDDD),
+                      color:
+                          selected
+                              ? const Color(0xFF00C979)
+                              : const Color(0xFFDDDDDD),
                       width: selected ? 3 : 1,
                     ),
                   ),
@@ -962,7 +1057,10 @@ class _TextTab extends StatelessWidget {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: selected ? const Color(0xFF00C979) : const Color(0xFFE0E0E0),
+                      color:
+                          selected
+                              ? const Color(0xFF00C979)
+                              : const Color(0xFFE0E0E0),
                       width: selected ? 2 : 1,
                     ),
                   ),
@@ -1039,7 +1137,10 @@ class _EffectsTab extends StatelessWidget {
                     color: c,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: selected ? const Color(0xFF00C979) : const Color(0xFFDDDDDD),
+                      color:
+                          selected
+                              ? const Color(0xFF00C979)
+                              : const Color(0xFFDDDDDD),
                       width: selected ? 3 : 1,
                     ),
                   ),
@@ -1058,12 +1159,7 @@ class _EffectsTab extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         const Text('Độ mờ', style: TextStyle(color: Colors.black54)),
-        Slider(
-          value: opacity,
-          min: 0,
-          max: 1,
-          onChanged: onOpacityChanged,
-        ),
+        Slider(value: opacity, min: 0, max: 1, onChanged: onOpacityChanged),
       ],
     );
   }

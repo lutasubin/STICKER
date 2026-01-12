@@ -9,6 +9,7 @@ import 'package:sticker_app/view/splash/splash_screen.dart';
 import 'package:sticker_app/view/create_sticker/select_image_screen.dart';
 import 'package:sticker_app/view/create_sticker/crop_screen.dart';
 import 'package:sticker_app/view/edit_sticker/edit_sticker_screen.dart';
+import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
 import 'package:sticker_app/view/my_sticker/my_sticker_screen.dart';
 import 'package:sticker_app/view/my_sticker/user_pack_detail_screen.dart';
 
@@ -26,6 +27,7 @@ class AppRoutes {
   static const createStickerSelectImage = '/createStickerSelectImage';
   static const createStickerCrop = '/createStickerCrop';
   static const editSticker = '/editSticker';
+  static const stickerPicker = '/stickerPicker';
 
   static final routes = [
     GetPage(
@@ -93,6 +95,12 @@ class AppRoutes {
       name: editSticker,
       page: () => const EditStickerScreen(),
       transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 250),
+    ),
+    GetPage(
+      name: stickerPicker,
+      page: () => const StickerPickerScreen(),
+      transition: Transition.rightToLeft,
       transitionDuration: const Duration(milliseconds: 250),
     ),
 

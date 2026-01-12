@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_painter_v2/flutter_painter.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
@@ -12,6 +14,8 @@ import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
 import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/view/edit_sticker/text_edit_screen.dart';
+import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
+import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
 
 enum EditTab { text, sticker, background }
 
@@ -44,6 +48,10 @@ class _EditStickerScreenState extends State<EditStickerScreen>
   Matrix4 _transformMatrix = Matrix4.identity();
   double _scale = 1.0;
   Offset _translation = Offset.zero;
+
+  // Sticker layers state
+  final List<StickerLayer> _stickerLayers = [];
+  String? _selectedStickerLayerId;
 
   @override
   void initState() {
@@ -142,14 +150,100 @@ class _EditStickerScreenState extends State<EditStickerScreen>
     await _saveStickerToPack(_pack);
   }
 
+  /// Render sticker layers lên canvas
+  Future<ui.Image> _renderStickerLayers(ui.Image baseImage) async {
+    const canvasSize = 512.0;
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+
+    // Vẽ base image
+    canvas.drawImage(baseImage, Offset.zero, Paint());
+
+    // Vẽ từng sticker layer
+    for (final layer in _stickerLayers) {
+      try {
+        final byteData = await rootBundle.load(layer.imagePath);
+        final codec = await ui.instantiateImageCodec(
+          byteData.buffer.asUint8List(),
+        );
+        final frame = await codec.getNextFrame();
+        final stickerImage = frame.image;
+
+        // Tính toán kích thước và vị trí (tỷ lệ 30% so với canvas)
+        // TẤT CẢ TÍNH TOÁN ĐỀU DÙNG CANVAS COORDINATES (512x512)
+        const stickerSizeRatio = 0.3;
+        final baseStickerSize = canvasSize * stickerSizeRatio;
+        final stickerSize = baseStickerSize * layer.scale;
+
+        // Position được lưu trong canvas coordinates (512x512) - top-left của sticker
+        // Tính center của sticker trong canvas coordinates
+        final stickerCenter = Offset(
+          layer.position.dx + stickerSize / 2,
+          layer.position.dy + stickerSize / 2,
+        );
+
+        final srcRect = Rect.fromLTWH(
+          0,
+          0,
+          stickerImage.width.toDouble(),
+          stickerImage.height.toDouble(),
+        );
+        final dstRect = Rect.fromCenter(
+          center: stickerCenter,
+          width: stickerSize,
+          height: stickerSize,
+        );
+
+        // Lưu canvas state
+        canvas.save();
+
+        // Áp dụng rotation - rotate từ center (trong canvas coordinates)
+        canvas.translate(stickerCenter.dx, stickerCenter.dy);
+        canvas.rotate(layer.rotation);
+        canvas.translate(-stickerCenter.dx, -stickerCenter.dy);
+
+        // Vẽ sticker (tất cả trong canvas coordinates 512x512)
+        canvas.drawImageRect(stickerImage, srcRect, dstRect, Paint());
+
+        // Restore canvas state
+        canvas.restore();
+
+        stickerImage.dispose();
+      } catch (e) {
+        debugPrint('Error rendering sticker layer ${layer.id}: $e');
+      }
+    }
+
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(canvasSize.toInt(), canvasSize.toInt());
+    picture.dispose();
+
+    return image;
+  }
+
   Future<void> _saveStickerToPack(UserStickerPack pack) async {
     if (_saving) return;
     setState(() => _saving = true);
 
     try {
-      final uiImage = await _controller.renderImage(const Size(512, 512));
-      final pngBytes = await uiImage.pngBytes;
+      final baseImage = await _controller.renderImage(const Size(512, 512));
+      ui.Image finalImage;
+
+      // Render sticker layers nếu có
+      if (_stickerLayers.isNotEmpty) {
+        finalImage = await _renderStickerLayers(baseImage);
+        baseImage.dispose(); // Dispose base image vì đã merge vào finalImage
+      } else {
+        finalImage = baseImage;
+      }
+
+      final pngBytes = await finalImage.pngBytes;
       if (pngBytes == null) throw Exception('Failed to render PNG');
+
+      // Dispose final image sau khi đã lấy bytes
+      if (_stickerLayers.isNotEmpty) {
+        finalImage.dispose();
+      }
 
       // Luôn compress WebP mới (vì có thể đã chỉnh sửa trong EditScreen)
       final webpBytes = await _encodeWebp(pngBytes);
@@ -455,15 +549,42 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       return;
     }
 
+    if (tab == EditTab.sticker) {
+      // Navigate đến màn hình chọn sticker riêng với background image
+      final result = await Get.to<dynamic>(
+        () => const StickerPickerScreen(),
+        arguments: {'stickerUri': _stickerFile.uri.toString()},
+        transition: Transition.rightToLeft,
+        duration: const Duration(milliseconds: 250),
+      );
+
+      // Nếu có sticker layers được chọn (đã transform), thêm vào canvas
+      if (result != null && mounted) {
+        setState(() {
+          // result có thể là List<StickerLayer> hoặc StickerLayer (backward compatibility)
+          if (result is List<StickerLayer>) {
+            // Nếu là list, thêm tất cả vào
+            _stickerLayers.addAll(result);
+            if (result.isNotEmpty) {
+              _selectedStickerLayerId = result.last.id;
+            }
+          } else if (result is StickerLayer) {
+            // Nếu là single layer (backward compatibility), thêm vào như cũ
+            _stickerLayers.add(result);
+            _selectedStickerLayerId = result.id;
+          }
+        });
+      }
+      return;
+    }
+
     Widget child;
     switch (tab) {
       case EditTab.text:
         child = const SizedBox.shrink();
         break;
       case EditTab.sticker:
-        child = const SafeArea(
-          child: Center(child: Text('Sticker tools (TODO)')),
-        );
+        child = const SizedBox.shrink();
         break;
       case EditTab.background:
         child = const SafeArea(
@@ -492,6 +613,33 @@ class _EditStickerScreenState extends State<EditStickerScreen>
         );
       },
     );
+  }
+
+  /// Cập nhật transform của sticker layer
+  void _onStickerLayerTransform(StickerLayer updatedLayer) {
+    setState(() {
+      final index = _stickerLayers.indexWhere((l) => l.id == updatedLayer.id);
+      if (index != -1) {
+        _stickerLayers[index] = updatedLayer;
+      }
+    });
+  }
+
+  /// Xóa sticker layer
+  void _onStickerLayerDelete(String layerId) {
+    setState(() {
+      _stickerLayers.removeWhere((l) => l.id == layerId);
+      if (_selectedStickerLayerId == layerId) {
+        _selectedStickerLayerId = null;
+      }
+    });
+  }
+
+  /// Chọn sticker layer
+  void _onStickerLayerTap(String layerId) {
+    setState(() {
+      _selectedStickerLayerId = layerId;
+    });
   }
 
   @override
@@ -608,6 +756,25 @@ class _EditStickerScreenState extends State<EditStickerScreen>
                               width: canvasSize,
                               height: canvasSize,
                               child: FlutterPainter(controller: _controller),
+                            ),
+                          ),
+                        ),
+                      // Sticker layers overlay - CHỈ HIỂN THỊ, KHÔNG CHO PHÉP CHỈNH SỬA
+                      // Position được lưu trong canvas coordinates (512x512)
+                      // Widget sẽ tự scale position lên display coordinates
+                      if (_showPainter && _stickerLayers.isNotEmpty)
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            // Disable tất cả gesture trên màn edit
+                            child: StickerLayersWidget(
+                              layers: _stickerLayers,
+                              canvasSize: canvasSize,
+                              displayScale: displaySize / canvasSize,
+                              selectedLayerId:
+                                  null, // Không hiển thị selection border
+                              onLayerTransform: _onStickerLayerTransform,
+                              onLayerDelete: _onStickerLayerDelete,
+                              onLayerTap: _onStickerLayerTap,
                             ),
                           ),
                         ),
