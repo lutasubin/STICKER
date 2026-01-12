@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 class CropAppBar extends StatelessWidget implements PreferredSizeWidget {
   const CropAppBar({
@@ -22,9 +23,9 @@ class CropAppBar extends StatelessWidget implements PreferredSizeWidget {
         onPressed: onBack,
         icon: const Icon(Icons.arrow_back, color: Colors.black),
       ),
-      title: const Text(
-        'Crop',
-        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+      title: Text(
+        'crop_title'.tr,
+        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
       ),
       actions: [
         TextButton(
@@ -34,7 +35,7 @@ class CropAppBar extends StatelessWidget implements PreferredSizeWidget {
             textStyle: const TextStyle(fontWeight: FontWeight.w700,fontSize: 18),
             
           ),
-          child: const Text('Next'),
+          child: Text('next_button'.tr),
         ),
       ],
     );

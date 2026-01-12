@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:get/get.dart';
 import 'package:sticker_app/model/sticker_pack.dart';
 
 /// Item hiển thị 1 gói sticker trong list.
@@ -84,9 +85,9 @@ class StickerPackTile extends StatelessWidget {
                             height: 18,
                           ),
                           const SizedBox(width: 5),
-                          const Text(
-                            'Add',
-                            style: TextStyle(
+                          Text(
+                            'add_button'.tr,
+                            style: const TextStyle(
                               color: Colors.black87,
                               fontWeight: FontWeight.bold,
                               fontSize: 14,

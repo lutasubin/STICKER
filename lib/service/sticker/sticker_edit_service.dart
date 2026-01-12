@@ -80,8 +80,53 @@ class StickerEditService {
     return StickerCategory.values;
   }
 
+  /// Cache danh sách backgrounds
+  List<String>? _backgroundCache;
+
+  /// Load danh sách background images
+  Future<List<String>> getBackgrounds() async {
+    // Kiểm tra cache trước
+    if (_backgroundCache != null) {
+      return _backgroundCache!;
+    }
+
+    try {
+      final manifestContent = await rootBundle.loadString('AssetManifest.json');
+      final Map<String, dynamic> manifestMap =
+          const JsonDecoder().convert(manifestContent) as Map<String, dynamic>;
+
+      // Lọc các asset trong folder background
+      const backgroundPath = 'assets/sticker_edit/background/';
+      final backgrounds =
+          manifestMap.keys
+              .where(
+                (key) => key.startsWith(backgroundPath) && key.endsWith('.webp'),
+              )
+              .toList()
+            ..sort((a, b) {
+              // Sắp xếp theo số thứ tự trong tên file
+              final aMatch = RegExp(r'(\d+)').firstMatch(a);
+              final bMatch = RegExp(r'(\d+)').firstMatch(b);
+              if (aMatch != null && bMatch != null) {
+                return int.parse(
+                  aMatch.group(1)!,
+                ).compareTo(int.parse(bMatch.group(1)!));
+              }
+              return a.compareTo(b);
+            });
+
+      // Cache kết quả
+      _backgroundCache = backgrounds;
+      return backgrounds;
+    } catch (e) {
+      debugPrint('Error loading backgrounds: $e');
+      return [];
+    }
+  }
+
   /// Clear cache (nếu cần)
   void clearCache() {
     _stickerCache.clear();
+    _backgroundCache = null;
   }
 }

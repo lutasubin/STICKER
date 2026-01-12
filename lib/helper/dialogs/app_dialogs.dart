@@ -157,21 +157,27 @@ class AppDialogs {
   static Future<bool> showDeletePackageConfirm() async {
     final result = await Get.dialog<bool>(
       AlertDialog(
-        title: const Text(
-          'Delete package',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+        title: Text(
+          'delete_package_title'.tr,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        content: const Text('Do you want to delete this sticker pack?'),
+        content: Text('delete_package_message'.tr),
         actions: [
           TextButton(
             onPressed: () => Get.back(result: false),
-            child: const Text('CANCEL', style: TextStyle(color: Colors.grey)),
+            child: Text(
+              'cancel_button'.tr,
+              style: const TextStyle(color: Colors.grey),
+            ),
           ),
           TextButton(
             onPressed: () => Get.back(result: true),
-            child: const Text(
-              'OK',
-              style: TextStyle(
+            child: Text(
+              'ok_button'.tr,
+              style: const TextStyle(
                 color: Color(0xFF00C979),
                 fontWeight: FontWeight.bold,
                 fontSize: 15,
@@ -232,7 +238,7 @@ class AppDialogs {
               foregroundColor: Colors.grey,
               textStyle: const TextStyle(fontWeight: FontWeight.w600),
             ),
-            child: const Text('CANCEL'),
+            child: Text('cancel_button'.tr),
           ),
           TextButton(
             onPressed: () {
@@ -244,9 +250,9 @@ class AppDialogs {
               foregroundColor: const Color(0xFF00C979),
               textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            child: const Text(
-              'OK',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            child: Text(
+              'ok_button'.tr,
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ),
         ],

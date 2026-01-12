@@ -40,10 +40,10 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Text(
-                          'Create Sticker',
-                          style: TextStyle(
+                          'create_sticker_title'.tr,
+                          style: const TextStyle(
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
                           ),
@@ -58,13 +58,13 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
                   const SizedBox(height: 12),
                   _CreateStickerOptionCard(
                     svgAsset: 'assets/svg/icon_regular.svg',
-                    title: 'Regular',
+                    title: 'sticker_type_regular'.tr,
                     onTap: () => Get.back<String>(result: 'regular'),
                   ),
                   const SizedBox(height: 12),
                   _CreateStickerOptionCard(
                     svgAsset: 'assets/svg/icon_amation.svg',
-                    title: 'Animated',
+                    title: 'sticker_type_animated'.tr,
                     onTap: () => Get.back<String>(result: 'animated'),
                   ),
                 ],
@@ -80,7 +80,7 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
     if (result == 'regular') {
       final service = Get.find<UserStickerPackService>();
       final UserStickerPack pack = service.createDraftPack(
-        title: 'Create package',
+        title: 'default_pack_name'.tr,
       );
 
       if (!mounted) return;
@@ -125,9 +125,9 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: false,
-        title: const Text(
-          'Sticker Maker',
-          style: TextStyle(
+        title: Text(
+          'sticker_maker_title'.tr,
+          style: const TextStyle(
             color: Colors.black,
             fontSize: 20,
             fontWeight: FontWeight.bold,

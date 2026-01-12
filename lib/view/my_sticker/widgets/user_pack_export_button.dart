@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:get/get.dart';
 
 class UserPackExportButton extends StatelessWidget {
   const UserPackExportButton({
@@ -147,7 +148,9 @@ class UserPackExportButton extends StatelessWidget {
                     ),
                   const SizedBox(width: 10),
                   Text(
-                    isSending ? 'Updating...' : 'Update to WhatsApp',
+                    isSending
+                        ? 'updating_button'.tr
+                        : 'update_to_whatsapp_button'.tr,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
@@ -198,9 +201,9 @@ class UserPackExportButton extends StatelessWidget {
                     height: 24,
                   ),
                 const SizedBox(width: 10),
-                const Text(
-                  'Export Package Sticker',
-                  style: TextStyle(
+                Text(
+                  'export_package_button'.tr,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
                     fontSize: 16,

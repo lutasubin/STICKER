@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 class HomeBottomBar extends StatelessWidget {
   const HomeBottomBar({super.key, this.currentIndex = 0, this.onTap});
@@ -21,7 +22,7 @@ class HomeBottomBar extends StatelessWidget {
             _BottomBarItem(
               icon: Icons.home_outlined,
               iconFilled: Icons.home,
-              label: 'Home',
+              label: 'bottom_nav_home'.tr,
               isActive: currentIndex == 0,
               onTap: () => onTap?.call(0),
             ),
@@ -29,7 +30,7 @@ class HomeBottomBar extends StatelessWidget {
             _BottomBarItem(
               icon: Icons.emoji_emotions_outlined,
               iconFilled: Icons.emoji_emotions,
-              label: 'My Sticker',
+              label: 'bottom_nav_my_sticker'.tr,
               isActive: currentIndex == 1,
               onTap: () => onTap?.call(1),
             ),

@@ -38,36 +38,51 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
 
   Future<void> _checkInstalledStatus({bool updateNeedsUpdate = true}) async {
     try {
-      final installed = await _whatsApp.isStickerPackInstalled(_pack.id);
       final service = Get.find<UserStickerPackService>();
+
       // Reload pack để lấy lastModifiedAtMs mới nhất
       final refreshedPack = service.getById(_pack.id);
       if (refreshedPack != null) {
         _pack = refreshedPack;
       }
 
-      // Nếu pack đã được install nhưng installedAt chưa được lưu, tự động lưu
-      if (installed) {
-        final installedAt = service.getPackInstalledAt(_pack.id);
-        if (installedAt == null) {
-          // Pack đã được install nhưng chưa có record, tự động mark as installed
-          AppLogger.i(
-            '[UserPackDetailScreen] Pack already installed but no record found, marking as installed: ${_pack.id}',
-          );
-          service.markPackAsInstalled(_pack.id);
-        }
+      // Check WhatsApp native (có thể không đáng tin cậy)
+      final installedInWhatsApp = await _whatsApp.isStickerPackInstalled(
+        _pack.id,
+      );
+
+      // Check local storage (đáng tin cậy hơn)
+      final installedAt = service.getPackInstalledAt(_pack.id);
+      final hasInstalledRecord = installedAt != null;
+
+      // Nếu có installedAt record → pack đã từng được cài
+      // → cho phép update, dù WhatsApp native check trả về false
+      final isInstalled = installedInWhatsApp || hasInstalledRecord;
+
+      // Nếu WhatsApp native check = true nhưng chưa có installedAt record
+      // → tự động lưu (trường hợp pack được add trước khi có tính năng tracking)
+      if (installedInWhatsApp && !hasInstalledRecord) {
+        AppLogger.i(
+          '[UserPackDetailScreen] Pack installed in WhatsApp but no record found, marking as installed: ${_pack.id}',
+        );
+        service.markPackAsInstalled(_pack.id);
       }
 
       final needsUpdate =
           updateNeedsUpdate ? service.packNeedsUpdate(_pack.id) : _needsUpdate;
+
       AppLogger.i(
-        '[UserPackDetailScreen] Check installed status: ${_pack.id}, '
-        'installed=$installed, needsUpdate=$needsUpdate, '
-        'lastModifiedAtMs=${_pack.lastModifiedAtMs}',
+        '[UserPackDetailScreen] Check installed status: ${_pack.id}\n'
+        '   - WhatsApp native: $installedInWhatsApp\n'
+        '   - Has installedAt record: $hasInstalledRecord (timestamp: $installedAt)\n'
+        '   - Final isInstalled: $isInstalled\n'
+        '   - needsUpdate: $needsUpdate\n'
+        '   - lastModifiedAtMs: ${_pack.lastModifiedAtMs}',
       );
+
       if (mounted) {
         setState(() {
-          _isInstalled = installed;
+          _isInstalled = isInstalled;
           _isChecking = false;
           if (updateNeedsUpdate) {
             _needsUpdate = needsUpdate;
@@ -204,7 +219,7 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
 
   Future<void> _renamePack() async {
     final result = await AppDialogs.showPackNameInputDialog(
-      title: 'Create package',
+      title: 'default_pack_name'.tr,
       initialText: _pack.title,
       hintText: 'Sticker pack name...',
     );

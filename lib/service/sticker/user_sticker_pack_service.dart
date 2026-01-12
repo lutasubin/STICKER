@@ -296,6 +296,16 @@ class UserStickerPackService extends GetxService {
             AppLogger.d(
               '[UserStickerPackService] File deleted: $stickerFileUri',
             );
+            
+            // Xóa cả file nobg tương ứng nếu có
+            final nobgPath = '${file.path}_nobg.png';
+            final nobgFile = File(nobgPath);
+            if (nobgFile.existsSync()) {
+              nobgFile.deleteSync();
+              AppLogger.d(
+                '[UserStickerPackService] Nobg file deleted: $nobgPath',
+              );
+            }
           }
         } catch (e, stackTrace) {
           AppLogger.w(
@@ -347,10 +357,25 @@ class UserStickerPackService extends GetxService {
 
     if (deleteOldFile) {
       try {
+        // Xóa file webp cũ
         final file = File.fromUri(Uri.parse(oldStickerFileUri));
-        if (file.existsSync()) file.deleteSync();
-      } catch (_) {
-        // ignore
+        if (file.existsSync()) {
+          file.deleteSync();
+          
+          // Xóa cả file nobg tương ứng nếu có
+          final nobgPath = '${file.path}_nobg.png';
+          final nobgFile = File(nobgPath);
+          if (nobgFile.existsSync()) {
+            nobgFile.deleteSync();
+            AppLogger.d(
+              '[UserStickerPackService] Deleted old nobg file: $nobgPath',
+            );
+          }
+        }
+      } catch (e) {
+        AppLogger.w(
+          '[UserStickerPackService] Error deleting old sticker files: $e',
+        );
       }
     }
 

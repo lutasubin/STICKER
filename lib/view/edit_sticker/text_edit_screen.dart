@@ -579,9 +579,12 @@ class _TextEditScreenState extends State<TextEditScreen> {
           onPressed: () => Get.back(result: false),
           icon: const Icon(Icons.close, color: Colors.black),
         ),
-        title: const Text(
-          'Văn Bản',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+        title: Text(
+          'text_edit_title'.tr,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
           IconButton(
@@ -1000,7 +1003,10 @@ class _TextTab extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Màu chữ', style: TextStyle(fontWeight: FontWeight.w600)),
+        Text(
+          'text_color_label'.tr,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 38,
@@ -1033,7 +1039,10 @@ class _TextTab extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        const Text('Font', style: TextStyle(fontWeight: FontWeight.w600)),
+        Text(
+          'font_label'.tr,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 10),
         SizedBox(
           height: 110,
@@ -1158,7 +1167,10 @@ class _EffectsTab extends StatelessWidget {
           onChanged: onSliderChanged,
         ),
         const SizedBox(height: 6),
-        const Text('Độ mờ', style: TextStyle(color: Colors.black54)),
+        Text(
+          'opacity_label'.tr,
+          style: const TextStyle(color: Colors.black54),
+        ),
         Slider(value: opacity, min: 0, max: 1, onChanged: onOpacityChanged),
       ],
     );

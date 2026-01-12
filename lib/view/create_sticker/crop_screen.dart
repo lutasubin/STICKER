@@ -113,7 +113,7 @@ class _CropScreenState extends State<CropScreen> {
         // AI crop phải chạy trên main thread (TensorFlow Lite không hoạt động trong isolate)
         AppLogger.d('[CropScreen] Processing AI cutout on main thread');
         if (mounted) {
-          setState(() => _loadingMessage = 'Đang xử lý AI...');
+          setState(() => _loadingMessage = 'processing_ai'.tr);
         }
         // Yield để UI update
         await Future.delayed(Duration.zero);
@@ -131,7 +131,7 @@ class _CropScreenState extends State<CropScreen> {
       if (_mode == _CropMode.autoCutout) {
         // AI crop: Compress trước rồi mới navigate (vì nặng, cần loading)
         if (mounted) {
-          setState(() => _loadingMessage = 'Đang nén ảnh...');
+          setState(() => _loadingMessage = 'compressing_image'.tr);
           await Future.delayed(Duration.zero); // Yield để UI update
         }
         final fileUri = await _compressAndSave(pngBytes);
@@ -201,7 +201,7 @@ class _CropScreenState extends State<CropScreen> {
   Future<Uint8List> _processAICrop() async {
     // Bước 1: Remove background (bước nặng nhất)
     if (mounted) {
-      setState(() => _loadingMessage = 'Đang xóa nền bằng AI...');
+      setState(() => _loadingMessage = 'removing_background_ai'.tr);
     }
     await Future.delayed(Duration.zero); // Yield để UI update
 
@@ -209,7 +209,7 @@ class _CropScreenState extends State<CropScreen> {
 
     // Bước 2: Decode image
     if (mounted) {
-      setState(() => _loadingMessage = 'Đang xử lý ảnh...');
+      setState(() => _loadingMessage = 'processing_image'.tr);
     }
     await Future.delayed(Duration.zero);
 
@@ -220,7 +220,7 @@ class _CropScreenState extends State<CropScreen> {
 
     // Bước 3: Apply threshold (tối ưu bằng cách xử lý trực tiếp trên buffer)
     if (mounted) {
-      setState(() => _loadingMessage = 'Đang làm sạch ảnh...');
+      setState(() => _loadingMessage = 'cleaning_image'.tr);
     }
     await Future.delayed(Duration.zero);
 
@@ -238,7 +238,7 @@ class _CropScreenState extends State<CropScreen> {
 
     // Bước 4: Render to canvas
     if (mounted) {
-      setState(() => _loadingMessage = 'Đang tạo sticker...');
+      setState(() => _loadingMessage = 'creating_sticker'.tr);
     }
     await Future.delayed(Duration.zero);
 
@@ -700,17 +700,20 @@ class _CropScreenState extends State<CropScreen> {
             onPressed: Get.back,
             icon: const Icon(Icons.arrow_back),
           ),
-          title: const Text('Crop Error'),
+          title: Text('error_crop_title'.tr),
         ),
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('An error occurred while loading the crop screen.'),
+              Text('error_crop_loading'.tr),
               const SizedBox(height: 16),
-              Text('Error: $e'),
+              Text('${'error_label'.tr} $e'),
               const SizedBox(height: 16),
-              ElevatedButton(onPressed: Get.back, child: const Text('Go Back')),
+              ElevatedButton(
+                onPressed: Get.back,
+                child: Text('go_back_button'.tr),
+              ),
             ],
           ),
         ),

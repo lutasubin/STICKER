@@ -13,6 +13,7 @@ import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
 import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
+import 'package:sticker_app/view/edit_sticker/background_picker_screen.dart';
 import 'package:sticker_app/view/edit_sticker/text_edit_screen.dart';
 import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
 import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
@@ -43,6 +44,7 @@ class _EditStickerScreenState extends State<EditStickerScreen>
 
   String? _tempStickerUri; // Lưu temp file URI nếu có
   String? _backgroundWebpUri; // Lưu WebP đã compress trong background
+  String? _noBgStickerUri; // Lưu sticker không có background (để edit lại)
 
   // Transform state cho sticker
   Matrix4 _transformMatrix = Matrix4.identity();
@@ -52,6 +54,9 @@ class _EditStickerScreenState extends State<EditStickerScreen>
   // Sticker layers state
   final List<StickerLayer> _stickerLayers = [];
   String? _selectedStickerLayerId;
+
+  // Background path đã chọn
+  String? _selectedBackgroundPath;
 
   @override
   void initState() {
@@ -64,8 +69,6 @@ class _EditStickerScreenState extends State<EditStickerScreen>
     if (isTempFile) {
       // Nếu là file tạm, lưu URI để dùng khi save
       _tempStickerUri = stickerUri;
-      // Tìm file WebP đã compress trong background (nếu có)
-      _tryFindBackgroundWebp(stickerUri);
     }
 
     _pack = args['pack'] as UserStickerPack;
@@ -84,16 +87,41 @@ class _EditStickerScreenState extends State<EditStickerScreen>
             focusNode: FocusNode(),
           );
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadStickerAsBackground();
+    // Load sticker sau khi tìm file nobg
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Tìm file nobg TRƯỚC (phải await để có kết quả)
+      await _tryFindBackgroundWebp(stickerUri);
+      // SAU ĐÓ mới load sticker (dùng nobg nếu có)
+      await _loadStickerAsBackground();
     });
   }
 
-  /// Tìm file WebP đã được compress trong background
-  Future<void> _tryFindBackgroundWebp(String tempUri) async {
+  /// Tìm file nobg và kiểm tra có background không
+  Future<void> _tryFindBackgroundWebp(String stickerUri) async {
     try {
-      // Extract timestamp từ temp file path
-      final tempFile = File.fromUri(Uri.parse(tempUri));
+      final uri = Uri.parse(stickerUri);
+      final filePath = uri.toFilePath();
+
+      debugPrint('Trying to find nobg file for: $filePath');
+
+      // Trường hợp 1: File .webp từ pack (đã được lưu)
+      if (filePath.endsWith('.webp')) {
+        final nobgPath = '${filePath}_nobg.png';
+        final nobgFile = File(nobgPath);
+        debugPrint('Checking nobg path: $nobgPath');
+
+        if (await nobgFile.exists()) {
+          _noBgStickerUri = nobgFile.uri.toString();
+          _backgroundWebpUri = stickerUri; // Mark as having background
+          debugPrint('✅ Found no-background sticker: $_noBgStickerUri');
+          return;
+        } else {
+          debugPrint('❌ No-background file not found at: $nobgPath');
+        }
+      }
+
+      // Trường hợp 2: Temp file (legacy logic)
+      final tempFile = File.fromUri(uri);
       final fileName = tempFile.path.split(Platform.pathSeparator).last;
       final match = RegExp(r'temp_(\d+)\.png').firstMatch(fileName);
       if (match != null) {
@@ -105,6 +133,16 @@ class _EditStickerScreenState extends State<EditStickerScreen>
         if (await webpFile.exists()) {
           _backgroundWebpUri = Uri.file(webpPath).toString();
           debugPrint('Found background WebP: $_backgroundWebpUri');
+
+          // Tìm file sticker không có background (_nobg.png)
+          final nobgPath = '${webpPath}_nobg.png';
+          final nobgFile = File(nobgPath);
+          if (await nobgFile.exists()) {
+            _noBgStickerUri = nobgFile.uri.toString();
+            debugPrint(
+              '✅ Found no-background sticker (temp): $_noBgStickerUri',
+            );
+          }
         }
       }
     } catch (e) {
@@ -114,7 +152,19 @@ class _EditStickerScreenState extends State<EditStickerScreen>
 
   Future<void> _loadStickerAsBackground() async {
     try {
-      final uiImage = await FileImage(_stickerFile).image;
+      // Nếu có file nobg (sticker không có background), dùng nó
+      // Nếu không, dùng file gốc
+      final fileToLoad =
+          _noBgStickerUri != null
+              ? File.fromUri(Uri.parse(_noBgStickerUri!))
+              : _stickerFile;
+
+      debugPrint('🎨 Loading sticker as background:');
+      debugPrint('  - _noBgStickerUri: $_noBgStickerUri');
+      debugPrint('  - _stickerFile: ${_stickerFile.path}');
+      debugPrint('  - Using file: ${fileToLoad.path}');
+
+      final uiImage = await FileImage(fileToLoad).image;
       if (!mounted) return;
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -150,14 +200,51 @@ class _EditStickerScreenState extends State<EditStickerScreen>
     await _saveStickerToPack(_pack);
   }
 
-  /// Render sticker layers lên canvas
+  /// Render sticker layers và background lên canvas
   Future<ui.Image> _renderStickerLayers(ui.Image baseImage) async {
     const canvasSize = 512.0;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
 
-    // Vẽ base image
-    canvas.drawImage(baseImage, Offset.zero, Paint());
+    // Vẽ background trước (nếu có)
+    if (_selectedBackgroundPath != null) {
+      try {
+        debugPrint('🎨 Rendering with selected background:');
+        debugPrint('  - Background path: $_selectedBackgroundPath');
+
+        // 1. Vẽ background mới
+        final byteData = await rootBundle.load(_selectedBackgroundPath!);
+        final codec = await ui.instantiateImageCodec(
+          byteData.buffer.asUint8List(),
+        );
+        final frame = await codec.getNextFrame();
+        final backgroundImage = frame.image;
+
+        canvas.drawImageRect(
+          backgroundImage,
+          Rect.fromLTWH(
+            0,
+            0,
+            backgroundImage.width.toDouble(),
+            backgroundImage.height.toDouble(),
+          ),
+          Rect.fromLTWH(0, 0, canvasSize, canvasSize),
+          Paint(),
+        );
+
+        backgroundImage.dispose();
+
+        // 2. Vẽ baseImage (đã chứa sticker gốc + text/drawables từ FlutterPainter)
+        canvas.drawImage(baseImage, Offset.zero, Paint());
+      } catch (e) {
+        debugPrint('❌ Error rendering background: $e');
+        // Nếu lỗi, vẽ base image như cũ
+        canvas.drawImage(baseImage, Offset.zero, Paint());
+      }
+    } else {
+      // Không có background mới, vẽ base image như cũ (có cả sticker gốc)
+      canvas.drawImage(baseImage, Offset.zero, Paint());
+    }
 
     // Vẽ từng sticker layer
     for (final layer in _stickerLayers) {
@@ -226,11 +313,25 @@ class _EditStickerScreenState extends State<EditStickerScreen>
     setState(() => _saving = true);
 
     try {
-      final baseImage = await _controller.renderImage(const Size(512, 512));
+      // Render baseImage từ FlutterPainter (chứa sticker gốc + text/drawables)
+      ui.Image baseImage = await _controller.renderImage(const Size(512, 512));
+
+      // Nếu có background được chọn, lưu nobg PNG bytes
+      // (nobg = sticker gốc + text/drawables, không có background mới)
+      Uint8List? nobgPngBytes;
+      if (_selectedBackgroundPath != null) {
+        try {
+          nobgPngBytes = await baseImage.pngBytes;
+          debugPrint('✅ Got nobg PNG bytes: ${nobgPngBytes?.length} bytes');
+        } catch (e) {
+          debugPrint('❌ Error getting nobg PNG bytes: $e');
+        }
+      }
+
       ui.Image finalImage;
 
-      // Render sticker layers nếu có
-      if (_stickerLayers.isNotEmpty) {
+      // Render sticker layers và background nếu có
+      if (_stickerLayers.isNotEmpty || _selectedBackgroundPath != null) {
         finalImage = await _renderStickerLayers(baseImage);
         baseImage.dispose(); // Dispose base image vì đã merge vào finalImage
       } else {
@@ -240,13 +341,13 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       final pngBytes = await finalImage.pngBytes;
       if (pngBytes == null) throw Exception('Failed to render PNG');
 
-      // Dispose final image sau khi đã lấy bytes
-      if (_stickerLayers.isNotEmpty) {
-        finalImage.dispose();
-      }
+      // Dispose images
+      finalImage.dispose();
 
-      // Luôn compress WebP mới (vì có thể đã chỉnh sửa trong EditScreen)
-      final webpBytes = await _encodeWebp(pngBytes);
+      // Tạo timestamp CHUNG cho cả nobg file và webp file
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+      // Chuẩn bị thư mục output
       final dir = await getApplicationDocumentsDirectory();
       final outDir = Directory(
         '${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${pack.id}',
@@ -254,8 +355,30 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       if (!await outDir.exists()) {
         await outDir.create(recursive: true);
       }
+
+      // Lưu nobg file nếu có (dùng CÙNG timestamp với webp)
+      if (nobgPngBytes != null) {
+        try {
+          final nobgFile = File(
+            '${outDir.path}${Platform.pathSeparator}$timestamp.webp_nobg.png',
+          );
+          await nobgFile.writeAsBytes(nobgPngBytes);
+          _noBgStickerUri = nobgFile.uri.toString();
+          debugPrint('💾 Saved no-background sticker:');
+          debugPrint('   Path: ${nobgFile.path}');
+          debugPrint('   URI: $_noBgStickerUri');
+          debugPrint('   Size: ${nobgPngBytes.length} bytes');
+        } catch (e) {
+          debugPrint('❌ Error saving no-background sticker file: $e');
+        }
+      }
+
+      // Luôn compress WebP mới (vì có thể đã chỉnh sửa trong EditScreen)
+      final webpBytes = await _encodeWebp(pngBytes);
+
+      // Lưu webp file (dùng CÙNG timestamp với nobg)
       final outFile = File(
-        '${outDir.path}${Platform.pathSeparator}${DateTime.now().millisecondsSinceEpoch}.webp',
+        '${outDir.path}${Platform.pathSeparator}$timestamp.webp',
       );
       await outFile.writeAsBytes(webpBytes, flush: true);
       final fileUri = Uri.file(outFile.path).toString();
@@ -578,6 +701,29 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       return;
     }
 
+    if (tab == EditTab.background) {
+      // Navigate đến màn hình chọn background
+      // Truyền background hiện tại để hiển thị trong preview
+      final result = await Get.to<String?>(
+        () => const BackgroundPickerScreen(),
+        arguments: {
+          'stickerUri': _stickerFile.uri.toString(),
+          'currentBackground':
+              _selectedBackgroundPath, // Truyền background hiện tại
+        },
+        transition: Transition.rightToLeft,
+        duration: const Duration(milliseconds: 250),
+      );
+
+      // Nếu có background được chọn, lưu lại (có thể là null để xóa background)
+      if (mounted) {
+        setState(() {
+          _selectedBackgroundPath = result; // null nếu không chọn background
+        });
+      }
+      return;
+    }
+
     Widget child;
     switch (tab) {
       case EditTab.text:
@@ -656,9 +802,12 @@ class _EditStickerScreenState extends State<EditStickerScreen>
           onPressed: () => Get.back(),
           icon: const Icon(Icons.arrow_back, color: Colors.black),
         ),
-        title: const Text(
-          'Edit Sticker',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+        title: Text(
+          'edit_sticker_title'.tr,
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
           TextButton(
@@ -683,8 +832,8 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       ),
       body: Stack(
         children: [
-          // Nền caro phủ toàn màn hình
-          _CheckerboardBackground(),
+          // Nền caro phủ toàn màn hình (chỉ hiển thị nếu không có background)
+          if (_selectedBackgroundPath == null) _CheckerboardBackground(),
           // Nội dung chính ở giữa
           Center(
             child: Builder(
@@ -736,6 +885,17 @@ class _EditStickerScreenState extends State<EditStickerScreen>
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
+                      // Background image (nếu có)
+                      if (_selectedBackgroundPath != null)
+                        Positioned.fill(
+                          child: Image.asset(
+                            _selectedBackgroundPath!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
                       // Sticker với khả năng di chuyển và phóng to thu nhỏ
                       if (_showPainter)
                         Positioned.fill(

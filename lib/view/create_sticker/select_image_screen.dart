@@ -113,8 +113,8 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
           _thumbFutures.clear();
         });
         Get.snackbar(
-          'Error',
-          'Load photos failed: $e',
+          'error_generic_title'.tr,
+          '${'error_load_photos'.tr}: $e',
           snackPosition: SnackPosition.BOTTOM,
         );
       }
@@ -202,7 +202,7 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
     final file = await _resolveAssetFile(asset);
     if (file == null) {
       Get.snackbar(
-        'Error',
+        'error_generic_title'.tr,
         'error_cannot_read_image'.tr,
         snackPosition: SnackPosition.BOTTOM,
       );
@@ -275,7 +275,7 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
               const SizedBox(height: 8),
               ElevatedButton(
                 onPressed: _openGalleryPicker,
-                child: const Text('Chọn ảnh từ thư viện'),
+                child: Text('select_from_library'.tr),
               ),
               const SizedBox(height: 8),
               TextButton(
@@ -295,19 +295,19 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                'Không load được danh sách ảnh trên thiết bị này. Bạn có thể chọn ảnh từ thư viện để tiếp tục.',
+              Text(
+                'load_failed_message'.tr,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: _openGalleryPicker,
-                child: const Text('Chọn ảnh từ thư viện'),
+                child: Text('select_from_library'.tr),
               ),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: _load,
-                child: const Text('Thử tải lại'),
+                child: Text('try_reload_button'.tr),
               ),
             ],
           ),

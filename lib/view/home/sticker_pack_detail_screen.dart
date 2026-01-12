@@ -34,7 +34,9 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
     }
 
     final dir = await getTemporaryDirectory();
-    final outDir = Directory('${dir.path}${Platform.pathSeparator}share_pack_${_pack.id}');
+    final outDir = Directory(
+      '${dir.path}${Platform.pathSeparator}share_pack_${_pack.id}',
+    );
     if (!await outDir.exists()) {
       await outDir.create(recursive: true);
     }
@@ -197,10 +199,10 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
                 ),
                 elevation: 0,
               ),
-              child: const Row(
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
+                  const SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
@@ -208,10 +210,10 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
                       color: Colors.grey,
                     ),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Text(
-                    'Đang kiểm tra...',
-                    style: TextStyle(
+                    'checking_status'.tr,
+                    style: const TextStyle(
                       color: Colors.grey,
                       fontWeight: FontWeight.w600,
                       fontSize: 16,
@@ -253,7 +255,7 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    'Has been added',
+                    'has_been_added_status'.tr,
                     style: TextStyle(
                       color: Colors.grey.shade700,
                       fontWeight: FontWeight.w600,
@@ -305,7 +307,9 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
                   ),
                 const SizedBox(width: 10),
                 Text(
-                  _isSending ? 'Adding...' : 'Add to whatsapp',
+                  _isSending
+                      ? 'adding_button_short'.tr
+                      : 'add_to_whatsapp_button'.tr,
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -338,14 +342,16 @@ class _StickerPackDetailScreenState extends State<StickerPackDetailScreen> {
 
       if (result == 'cancelled') {
         return;
-      } else if (result == 'already_added' || result == 'add_successful' || result == 'success') {
+      } else if (result == 'already_added' ||
+          result == 'add_successful' ||
+          result == 'success') {
         // Cập nhật trạng thái đã được thêm vào
         if (mounted) {
           setState(() {
             _isInstalled = true;
           });
         }
-        
+
         if (result == 'already_added') {
           AppDialogs.showStickerAlreadyAdded();
         } else {
