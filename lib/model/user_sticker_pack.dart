@@ -7,6 +7,7 @@ class UserStickerPack {
   final int createdAtMs;
   final int lastModifiedAtMs; // Thời điểm chỉnh sửa lần cuối
   final List<String> stickerFileUris;
+  final bool isAnimated; // Đánh dấu pack chứa sticker động
 
   const UserStickerPack({
     required this.id,
@@ -14,6 +15,7 @@ class UserStickerPack {
     required this.createdAtMs,
     required this.lastModifiedAtMs,
     required this.stickerFileUris,
+    this.isAnimated = false, // Mặc định là sticker tĩnh
   });
 
   UserStickerPack copyWith({
@@ -22,6 +24,7 @@ class UserStickerPack {
     int? createdAtMs,
     int? lastModifiedAtMs,
     List<String>? stickerFileUris,
+    bool? isAnimated,
   }) {
     return UserStickerPack(
       id: id ?? this.id,
@@ -29,6 +32,7 @@ class UserStickerPack {
       createdAtMs: createdAtMs ?? this.createdAtMs,
       lastModifiedAtMs: lastModifiedAtMs ?? this.lastModifiedAtMs,
       stickerFileUris: stickerFileUris ?? this.stickerFileUris,
+      isAnimated: isAnimated ?? this.isAnimated,
     );
   }
 
@@ -39,6 +43,7 @@ class UserStickerPack {
       'createdAtMs': createdAtMs,
       'lastModifiedAtMs': lastModifiedAtMs,
       'stickerFileUris': stickerFileUris,
+      'isAnimated': isAnimated,
     };
   }
 
@@ -46,14 +51,20 @@ class UserStickerPack {
     final rawUris = json['stickerFileUris'];
     final createdAtMs = (json['createdAtMs'] as num?)?.toInt() ?? 0;
     // Nếu không có lastModifiedAtMs, dùng createdAtMs (backward compatibility)
-    final lastModifiedAtMs = (json['lastModifiedAtMs'] as num?)?.toInt() ?? createdAtMs;
+    final lastModifiedAtMs =
+        (json['lastModifiedAtMs'] as num?)?.toInt() ?? createdAtMs;
+    // Backward compatibility: nếu không có isAnimated, mặc định là false
+    final isAnimated = json['isAnimated'] as bool? ?? false;
     return UserStickerPack(
       id: (json['id'] ?? '').toString(),
       title: (json['title'] ?? '').toString(),
       createdAtMs: createdAtMs,
       lastModifiedAtMs: lastModifiedAtMs,
       stickerFileUris:
-          rawUris is List ? rawUris.map((e) => e.toString()).toList() : const [],
+          rawUris is List
+              ? rawUris.map((e) => e.toString()).toList()
+              : const [],
+      isAnimated: isAnimated,
     );
   }
 }

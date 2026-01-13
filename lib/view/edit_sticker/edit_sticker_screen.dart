@@ -399,19 +399,40 @@ class _EditStickerScreenState extends State<EditStickerScreen>
       final service = Get.find<UserStickerPackService>();
       UserStickerPack updatedPack;
 
-      if (_replaceStickerUri != null) {
-        service.replaceStickerUri(
-          packId: pack.id,
-          oldStickerFileUri: _replaceStickerUri!,
-          newStickerFileUri: fileUri,
-          deleteOldFile: true,
-        );
-        // Lấy pack đã được update
-        updatedPack = service.getById(pack.id)!;
-      } else {
-        service.addStickerUri(packId: pack.id, stickerFileUri: fileUri);
-        // Lấy pack đã được update
-        updatedPack = service.getById(pack.id)!;
+      try {
+        if (_replaceStickerUri != null) {
+          service.replaceStickerUri(
+            packId: pack.id,
+            oldStickerFileUri: _replaceStickerUri!,
+            newStickerFileUri: fileUri,
+            deleteOldFile: true,
+          );
+          // Lấy pack đã được update
+          updatedPack = service.getById(pack.id)!;
+        } else {
+          // Add static sticker - specify isAnimated = false
+          service.addStickerUri(
+            packId: pack.id,
+            stickerFileUri: fileUri,
+            isAnimatedSticker:
+                false, // Edit sticker screen chỉ xử lý static sticker
+          );
+          // Lấy pack đã được update
+          updatedPack = service.getById(pack.id)!;
+        }
+      } catch (e) {
+        // Validation error: sticker type không match với pack type
+        if (mounted) {
+          Get.snackbar(
+            'Lỗi',
+            e.toString(),
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red,
+            colorText: Colors.white,
+            duration: const Duration(seconds: 4),
+          );
+        }
+        return; // Không navigate nếu có lỗi
       }
 
       PaintingBinding.instance.imageCache.evict(FileImage(_stickerFile));
@@ -432,8 +453,9 @@ class _EditStickerScreenState extends State<EditStickerScreen>
 
   Future<void> _showSaveStickerDialog() async {
     final service = Get.find<UserStickerPackService>();
-    final allPacks = service.getAll();
-    // Tự động chọn pack đầu tiên nếu có
+    // CHỈ hiển thị pack static (vì đây là flow tạo sticker tĩnh)
+    final allPacks = service.getAll().where((p) => !p.isAnimated).toList();
+    // Tự động chọn pack static đầu tiên nếu có
     UserStickerPack? selectedPack = allPacks.isNotEmpty ? allPacks.first : null;
 
     await showModalBottomSheet<void>(
@@ -456,14 +478,21 @@ class _EditStickerScreenState extends State<EditStickerScreen>
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Title
-                  const Text(
-                    'Save Sticker',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
+                  // Title với indicator
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Save Sticker',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                      // Indicator cho static pack (không hiển thị vì mặc định là static)
+                    ],
                   ),
                   const SizedBox(height: 20),
 
@@ -477,7 +506,11 @@ class _EditStickerScreenState extends State<EditStickerScreen>
                         hintText: 'Sticker pack name...',
                       );
                       if (packName != null && packName.isNotEmpty) {
-                        final newPack = service.createPack(title: packName);
+                        // Tạo pack mới với isAnimated = false (vì đây là flow tạo sticker tĩnh)
+                        final newPack = service.createPack(
+                          title: packName,
+                          isAnimated: false,
+                        );
                         await _saveStickerToPack(newPack);
                       }
                     },

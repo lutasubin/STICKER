@@ -88,8 +88,10 @@ class UserStickerPackService extends GetxService {
     }
   }
 
-  UserStickerPack createPack({required String title}) {
-    AppLogger.i('[UserStickerPackService] Creating new pack: $title');
+  UserStickerPack createPack({required String title, bool isAnimated = false}) {
+    AppLogger.i(
+      '[UserStickerPackService] Creating new pack: $title (animated: $isAnimated)',
+    );
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       final id = 'user-pack-$now';
@@ -100,6 +102,7 @@ class UserStickerPackService extends GetxService {
         createdAtMs: now,
         lastModifiedAtMs: now,
         stickerFileUris: const [],
+        isAnimated: isAnimated,
       );
 
       final packs = getAll();
@@ -117,7 +120,10 @@ class UserStickerPackService extends GetxService {
     }
   }
 
-  UserStickerPack createDraftPack({required String title}) {
+  UserStickerPack createDraftPack({
+    required String title,
+    bool isAnimated = false,
+  }) {
     final now = DateTime.now().millisecondsSinceEpoch;
     final id = 'user-pack-$now';
 
@@ -127,6 +133,7 @@ class UserStickerPackService extends GetxService {
       createdAtMs: now,
       lastModifiedAtMs: now,
       stickerFileUris: const [],
+      isAnimated: isAnimated,
     );
   }
 
@@ -148,6 +155,8 @@ class UserStickerPackService extends GetxService {
   UserStickerPack? addStickerUri({
     required String packId,
     required String stickerFileUri,
+    bool?
+    isAnimatedSticker, // Optional: explicitly specify if sticker is animated
   }) {
     AppLogger.d('[UserStickerPackService] Adding sticker to pack: $packId');
     try {
@@ -159,6 +168,26 @@ class UserStickerPackService extends GetxService {
       }
 
       final current = packs[index];
+
+      // Validate sticker type matches pack type
+      // isAnimatedSticker must be provided by caller
+      // Default to false (static) if not specified
+      final stickerIsAnimated = isAnimatedSticker ?? false;
+
+      // Check if sticker type matches pack type
+      if (current.isAnimated != stickerIsAnimated) {
+        final packType = current.isAnimated ? 'động' : 'tĩnh';
+        final stickerType = stickerIsAnimated ? 'động' : 'tĩnh';
+        AppLogger.w(
+          '[UserStickerPackService] Sticker type mismatch: '
+          'pack is $packType but sticker is $stickerType',
+        );
+        throw Exception(
+          'Không thể thêm sticker $stickerType vào pack $packType. '
+          'Vui lòng tạo pack mới hoặc chọn đúng loại sticker.',
+        );
+      }
+
       final now = DateTime.now().millisecondsSinceEpoch;
       final updated = current.copyWith(
         stickerFileUris: [stickerFileUri, ...current.stickerFileUris],
@@ -179,7 +208,7 @@ class UserStickerPackService extends GetxService {
         e,
         stackTrace,
       );
-      return null;
+      rethrow; // Re-throw để caller có thể hiển thị error message
     }
   }
 
@@ -296,7 +325,7 @@ class UserStickerPackService extends GetxService {
             AppLogger.d(
               '[UserStickerPackService] File deleted: $stickerFileUri',
             );
-            
+
             // Xóa cả file nobg tương ứng nếu có
             final nobgPath = '${file.path}_nobg.png';
             final nobgFile = File(nobgPath);
@@ -361,7 +390,7 @@ class UserStickerPackService extends GetxService {
         final file = File.fromUri(Uri.parse(oldStickerFileUri));
         if (file.existsSync()) {
           file.deleteSync();
-          
+
           // Xóa cả file nobg tương ứng nếu có
           final nobgPath = '${file.path}_nobg.png';
           final nobgFile = File(nobgPath);

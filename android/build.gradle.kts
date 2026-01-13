@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // FFmpeg Kit Maven repository
+        maven { url = uri("https://github.com/arthenica/ffmpeg-kit/releases/download/v6.0/maven") }
     }
 }
 

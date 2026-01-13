@@ -125,24 +125,44 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
       final needsUpdate = service.packNeedsUpdate(refreshed.id);
       AppLogger.i(
         '[UserPackDetailScreen] Reloading pack: ${refreshed.id}, '
-        'lastModifiedAtMs=${refreshed.lastModifiedAtMs}, needsUpdate=$needsUpdate',
+        'lastModifiedAtMs=${refreshed.lastModifiedAtMs}, needsUpdate=$needsUpdate, '
+        'stickerCount=${refreshed.stickerFileUris.length}',
       );
-      setState(() {
-        _pack = refreshed;
-        _changed = true;
-        _needsUpdate = needsUpdate;
-      });
-      // Kiểm tra lại trạng thái installed sau khi reload (không update needsUpdate vì đã tính ở trên)
-      _checkInstalledStatus(updateNeedsUpdate: false);
+      if (mounted) {
+        setState(() {
+          _pack = refreshed;
+          _changed = true;
+          _needsUpdate = needsUpdate;
+        });
+        // Kiểm tra lại trạng thái installed sau khi reload (không update needsUpdate vì đã tính ở trên)
+        _checkInstalledStatus(updateNeedsUpdate: false);
+      }
     }
   }
 
   Future<void> _addSticker() async {
-    await Get.toNamed(
-      AppRoutes.createStickerSelectImage,
-      arguments: {'pack': _pack, 'goToUserPackDetail': true},
-    );
+    // Route đến đúng screen dựa trên loại pack
+    if (_pack.isAnimated) {
+      // Pack animated → route đến select video screen
+      // Truyền goToUserPackDetail: true để sau khi tạo xong sẽ quay lại pack detail
+      await Get.toNamed(
+        AppRoutes.createAnimatedSelectVideo,
+        arguments: {
+          'pack': _pack,
+          'isNewPack': false,
+          'goToUserPackDetail': true, // Quay lại pack detail sau khi tạo xong
+        },
+      );
+    } else {
+      // Pack static → route đến select image screen
+      await Get.toNamed(
+        AppRoutes.createStickerSelectImage,
+        arguments: {'pack': _pack, 'goToUserPackDetail': true},
+      );
+    }
     if (!mounted) return;
+    // Đợi một chút để đảm bảo file đã được lưu
+    await Future.delayed(const Duration(milliseconds: 100));
     _reloadFromStorage();
   }
 
@@ -240,7 +260,7 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
   void _openStickerViewer(String stickerUri) {
     AppDialogs.showStickerViewer(
       stickerUri: stickerUri,
-      onDelete: () {
+      onDelete: () async {
         final service = Get.find<UserStickerPackService>();
         service.removeStickerUri(
           packId: _pack.id,
@@ -248,7 +268,11 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
           deleteFile: true,
         );
         Get.back();
-        _reloadFromStorage();
+        // Đợi một chút để đảm bảo file đã được xóa và pack đã được update
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (mounted) {
+          _reloadFromStorage();
+        }
       },
       onShare: () async {
         final file = File.fromUri(Uri.parse(stickerUri));

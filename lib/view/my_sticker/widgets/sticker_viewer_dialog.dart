@@ -40,7 +40,24 @@ class StickerViewerDialog extends StatelessWidget {
                     child: AspectRatio(
                       aspectRatio: 1,
                       child: file.existsSync()
-                          ? Image.file(file, fit: BoxFit.cover)
+                          ? Image.file(
+                              file,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                // Log error để debug
+                                debugPrint(
+                                  '[StickerViewerDialog] Failed to load image: $stickerUri, error: $error',
+                                );
+                                return const ColoredBox(
+                                  color: Color(0xFFF3F3F3),
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    color: Colors.black26,
+                                    size: 48,
+                                  ),
+                                );
+                              },
+                            )
                           : const ColoredBox(color: Color(0xFFF3F3F3)),
                     ),
                   ),

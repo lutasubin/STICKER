@@ -166,7 +166,7 @@ class WhatsappStickerService {
       'privacyPolicyWebsite': '',
       'licenseAgreementWebsite': '',
       'stickers': stickers,
-      'isAnimated': false,
+      'isAnimated': pack.isAnimated, // Sử dụng flag từ pack để xác định loại sticker
     };
 
     AppLogger.d(

@@ -94,11 +94,19 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
     }
 
     if (result == 'animated') {
-      Get.snackbar(
-        'coming_soon_title'.tr,
-        'coming_soon_animated_stickers'.tr,
-        snackPosition: SnackPosition.BOTTOM,
+      final service = Get.find<UserStickerPackService>();
+      final UserStickerPack pack = service.createDraftPack(
+        title: 'default_pack_name'.tr,
+        isAnimated: true, // Đánh dấu pack này là pack cho sticker động
       );
+
+      if (!mounted) return;
+      Get.toNamed(
+        AppRoutes.createAnimatedSelectVideo,
+        arguments: {'pack': pack, 'isNewPack': true},
+      )?.then((_) {
+        if (mounted) _load();
+      });
     }
   }
 
@@ -254,12 +262,53 @@ class _UserPackTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      pack.title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            pack.title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ),
+                        // Hiển thị indicator cho pack animated
+                        if (pack.isAnimated)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00C979).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: const Color(0xFF00C979),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.play_circle_outline,
+                                  size: 14,
+                                  color: Color(0xFF00C979),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Động',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: const Color(0xFF00C979),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(

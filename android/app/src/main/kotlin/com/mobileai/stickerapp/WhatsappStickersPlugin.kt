@@ -122,6 +122,27 @@ public class WhatsappStickersPlugin: FlutterPlugin, MethodCallHandler, ActivityA
           result.error(e.code, e.message, null)
         }
       }
+      "setWebpLoopCount" -> {
+        try {
+          val filePath = call.argument<String>("filePath")
+          val loopCount = call.argument<Int>("loopCount") ?: 0
+          
+          if (filePath == null) {
+            result.error("INVALID_ARGUMENTS", "filePath is required", null)
+            return
+          }
+          
+          val success = WebpLoopHandler.setLoopCount(filePath, loopCount)
+          if (success) {
+            result.success(true)
+          } else {
+            result.error("FAILED", "Failed to set loop count", null)
+          }
+        } catch (e: Exception) {
+          Log.e("WhatsappStickersPlugin", "Error setting WebP loop count", e)
+          result.error("EXCEPTION", e.message, null)
+        }
+      }
       else -> result.notImplemented()
     }
   }

@@ -8,6 +8,8 @@ import 'package:sticker_app/view/setting/setting_screen.dart';
 import 'package:sticker_app/view/splash/splash_screen.dart';
 import 'package:sticker_app/view/create_sticker/select_image_screen.dart';
 import 'package:sticker_app/view/create_sticker/crop_screen.dart';
+import 'package:sticker_app/view/create_sticker/select_video_screen.dart';
+import 'package:sticker_app/view/create_sticker/crop_video_screen.dart';
 import 'package:sticker_app/view/edit_sticker/edit_sticker_screen.dart';
 import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
 import 'package:sticker_app/view/my_sticker/my_sticker_screen.dart';
@@ -26,6 +28,8 @@ class AppRoutes {
   static const stickerPackDetail = '/stickerPackDetail';
   static const createStickerSelectImage = '/createStickerSelectImage';
   static const createStickerCrop = '/createStickerCrop';
+  static const createAnimatedSelectVideo = '/createAnimatedSelectVideo';
+  static const createAnimatedCrop = '/createAnimatedCrop';
   static const editSticker = '/editSticker';
   static const stickerPicker = '/stickerPicker';
 
@@ -88,6 +92,18 @@ class AppRoutes {
     GetPage(
       name: createStickerCrop,
       page: () => const CropScreen(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 250),
+    ),
+    GetPage(
+      name: createAnimatedSelectVideo,
+      page: () => const SelectVideoScreen(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 250),
+    ),
+    GetPage(
+      name: createAnimatedCrop,
+      page: () => const CropVideoScreen(),
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 250),
     ),

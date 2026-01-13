@@ -3,10 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class AddStickerTile extends StatelessWidget {
-  const AddStickerTile({
-    super.key,
-    required this.onTap,
-  });
+  const AddStickerTile({super.key, required this.onTap});
 
   final VoidCallback onTap;
 
@@ -61,10 +58,11 @@ class _DashedRRectPainter extends CustomPainter {
     final metrics = path.computeMetrics().toList();
     if (metrics.isEmpty) return;
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth;
 
     for (final metric in metrics) {
       var distance = 0.0;
@@ -128,12 +126,26 @@ class UserPackStickerGrid extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   color: const Color(0xFFF3F3F3),
-                  child: file.existsSync()
-                      ? Image.file(file, fit: BoxFit.cover)
-                      : const Icon(
-                          Icons.broken_image_outlined,
-                          color: Colors.black26,
-                        ),
+                  child:
+                      file.existsSync()
+                          ? Image.file(
+                            file,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              // Log error để debug
+                              debugPrint(
+                                '[UserPackStickerGrid] Failed to load image: $uri, error: $error',
+                              );
+                              return const Icon(
+                                Icons.broken_image_outlined,
+                                color: Colors.black26,
+                              );
+                            },
+                          )
+                          : const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.black26,
+                          ),
                 ),
               ),
             );
