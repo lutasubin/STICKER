@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'package:sticker_app/view/create_sticker/crop_images_screen.dart';
 import 'package:sticker_app/view/home/home_screen.dart';
 import 'package:sticker_app/view/home/sticker_pack_detail_screen.dart';
 import 'package:sticker_app/view/lang/lang.dart';
@@ -7,7 +8,6 @@ import 'package:sticker_app/view/onboarding/onboarding_screen.dart';
 import 'package:sticker_app/view/setting/setting_screen.dart';
 import 'package:sticker_app/view/splash/splash_screen.dart';
 import 'package:sticker_app/view/create_sticker/select_image_screen.dart';
-import 'package:sticker_app/view/create_sticker/crop_screen.dart';
 import 'package:sticker_app/view/create_sticker/select_video_screen.dart';
 import 'package:sticker_app/view/create_sticker/crop_video_screen.dart';
 import 'package:sticker_app/view/edit_sticker/edit_sticker_screen.dart';
