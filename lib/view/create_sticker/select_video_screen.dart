@@ -18,7 +18,7 @@ class SelectVideoScreen extends StatefulWidget {
 }
 
 class _SelectVideoScreenState extends State<SelectVideoScreen> {
-  late final UserStickerPack _pack;
+  UserStickerPack? _pack; // Có thể null nếu tạo sticker động ở ngoài pack
   String? _replaceStickerUri;
   bool _goToUserPackDetail = false;
   bool _isNewPack = false;
@@ -36,12 +36,16 @@ class _SelectVideoScreenState extends State<SelectVideoScreen> {
     super.initState();
     final args = Get.arguments;
     if (args is Map) {
-      _pack = args['pack'] as UserStickerPack;
+      // Pack có thể null nếu tạo sticker động ở ngoài pack
+      _pack = args['pack'] as UserStickerPack?;
       _replaceStickerUri = args['replaceStickerUri'] as String?;
       _goToUserPackDetail = args['goToUserPackDetail'] == true;
       _isNewPack = args['isNewPack'] == true;
+    } else if (args is UserStickerPack) {
+      _pack = args;
     } else {
-      _pack = args as UserStickerPack;
+      // Không có pack: tạo sticker động ở ngoài pack
+      _pack = null;
     }
     _load();
   }
@@ -209,10 +213,11 @@ class _SelectVideoScreenState extends State<SelectVideoScreen> {
     Get.toNamed(
       AppRoutes.createAnimatedCrop,
       arguments: {
-        'pack': _pack,
+        // Chỉ truyền pack nếu có, nếu null thì không truyền (hoặc truyền null)
+        if (_pack != null) 'pack': _pack,
         'videoFile': file,
         'videoDuration': videoDuration,
-        'replaceStickerUri': _replaceStickerUri,
+        if (_replaceStickerUri != null) 'replaceStickerUri': _replaceStickerUri,
         'goToUserPackDetail': _goToUserPackDetail,
         'isNewPack': _isNewPack,
       },

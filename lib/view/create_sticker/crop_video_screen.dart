@@ -22,7 +22,7 @@ class CropVideoScreen extends StatefulWidget {
 }
 
 class _CropVideoScreenState extends State<CropVideoScreen> {
-  late final UserStickerPack _pack;
+  UserStickerPack? _pack; // Có thể null nếu tạo sticker động ở ngoài pack
   late final File _videoFile;
   late final Duration _videoDuration;
   String? _replaceStickerUri;
@@ -52,7 +52,8 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
       if (args is! Map) {
         throw Exception('Expected Map arguments, got ${args.runtimeType}');
       }
-      _pack = args['pack'] as UserStickerPack;
+      // Pack có thể null nếu tạo sticker động ở ngoài pack
+      _pack = args['pack'] as UserStickerPack?;
       _videoFile = args['videoFile'] as File;
 
       // Validate video file exists
@@ -199,14 +200,49 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
   Future<void> _onNext() async {
     if (_processing) return;
 
-    // Nếu là pack mới (từ create sticker flow), hiện dialog để chọn pack
-    if (_isNewPack) {
-      await _showSaveStickerDialog();
+    // Validate duration trước
+    final duration = _endTime - _startTime;
+    if (duration < 1) {
+      Get.snackbar(
+        'error_generic_title'.tr,
+        'animated_duration_too_short'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+    if (duration > 5) {
+      Get.snackbar(
+        'error_generic_title'.tr,
+        'animated_duration_too_long'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
       return;
     }
 
-    // Nếu là pack có sẵn (từ my sticker), process và lưu trực tiếp vào pack đó
-    await _processAndSaveToPack(_pack);
+    // Pause video ngay
+    _videoController?.pause();
+
+    // Process và lưu sticker vào pack
+    // Nếu có pack từ arguments → kiểm tra pack có tồn tại không
+    // Nếu không có pack hoặc pack không tồn tại → hiển thị dialog để chọn/tạo pack động
+    if (_pack != null) {
+      // Kiểm tra pack có tồn tại trong service không
+      final service = Get.find<UserStickerPackService>();
+      final existingPack = service.getById(_pack!.id);
+      if (existingPack != null) {
+        // Pack tồn tại: process trực tiếp
+        await _processAndSaveToPack(_pack!);
+      } else {
+        // Pack không tồn tại: hiển thị dialog để chọn/tạo pack động
+        debugPrint(
+          '[CropVideoScreen] Pack not found: ${_pack!.id}, showing dialog',
+        );
+        await _showSaveStickerDialog();
+      }
+    } else {
+      // Không có pack: hiển thị dialog để chọn/tạo pack động
+      await _showSaveStickerDialog();
+    }
   }
 
   /// Process video và lưu vào pack
@@ -294,8 +330,19 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
 
       if (!mounted) return;
 
-      // Lấy pack đã được update
-      final updatedPack = service.getById(pack.id)!;
+      // Lấy pack đã được update - kiểm tra pack có tồn tại không
+      final updatedPack = service.getById(pack.id);
+      if (updatedPack == null) {
+        // Pack không tồn tại: hiển thị dialog để chọn/tạo pack động
+        debugPrint(
+          '[CropVideoScreen] Pack not found after save: ${pack.id}, showing dialog',
+        );
+        if (mounted) {
+          setState(() => _processing = false);
+          await _showSaveStickerDialog();
+        }
+        return;
+      }
 
       // Show success và navigate
       Get.snackbar(
@@ -783,8 +830,19 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
 
       if (!mounted) return;
 
-      // Lấy pack đã được update
-      final updatedPack = service.getById(pack.id)!;
+      // Lấy pack đã được update - kiểm tra pack có tồn tại không
+      final updatedPack = service.getById(pack.id);
+      if (updatedPack == null) {
+        // Pack không tồn tại: hiển thị dialog để chọn/tạo pack động
+        debugPrint(
+          '[CropVideoScreen] Pack not found after save: ${pack.id}, showing dialog',
+        );
+        if (mounted) {
+          setState(() => _processing = false);
+          await _showSaveStickerDialog();
+        }
+        return;
+      }
 
       // Show success và navigate
       Get.snackbar(
@@ -933,6 +991,11 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
               children: [
                 VideoPlayer(controller),
                 // Crop shape overlay
+                if (_cropMode == CropShapeMode.square)
+                  CustomPaint(
+                    painter: _SquareOverlayPainter(),
+                    size: Size.infinite,
+                  ),
                 if (_cropMode == CropShapeMode.circle)
                   CustomPaint(
                     painter: _CircleOverlayPainter(),
@@ -979,7 +1042,7 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildCropModeButton(
-                  icon: Icons.crop_square,
+                  icon: Icons.square_outlined,
                   label: 'Hình vuông',
                   mode: CropShapeMode.square,
                 ),
@@ -1009,13 +1072,39 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
       onTap: () {
         setState(() => _cropMode = mode);
       },
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(12),
-        child: Icon(
-          icon,
-          size: 60,
-          color: isSelected ? const Color(0xFF00C979) : Colors.grey,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color:
+              isSelected
+                  ? const Color(0xFF00C979).withOpacity(0.1)
+                  : Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF00C979) : Colors.grey[300]!,
+            width: 2,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 40,
+              color: isSelected ? const Color(0xFF00C979) : Colors.grey[600],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected ? const Color(0xFF00C979) : Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );
@@ -1149,12 +1238,60 @@ class _CheckeredBackgroundPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+/// Custom painter để vẽ square overlay
+class _SquareOverlayPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    // Tính kích thước vuông (lấy cạnh nhỏ hơn để fit trong preview)
+    final squareSize =
+        (size.width < size.height ? size.width : size.height) * 0.9;
+
+    final squareRect = Rect.fromCenter(
+      center: center,
+      width: squareSize,
+      height: squareSize,
+    );
+
+    // Cần dùng saveLayer để BlendMode.clear hoạt động đúng
+    canvas.saveLayer(Offset.zero & size, Paint());
+
+    // Draw outer dim area
+    final outerPaint =
+        Paint()
+          ..color = Colors.black54
+          ..style = PaintingStyle.fill;
+    canvas.drawRect(Offset.zero & size, outerPaint);
+
+    // Clear square in the middle
+    final squarePaint = Paint()..blendMode = BlendMode.clear;
+    canvas.drawRect(squareRect, squarePaint);
+
+    canvas.restore();
+
+    // Draw square border (vẽ sau khi restore để border không bị clear)
+    final borderPaint =
+        Paint()
+          ..color = const Color(0xFF00C979)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+    canvas.drawRect(squareRect, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 /// Custom painter để vẽ circle overlay
 class _CircleOverlayPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2 * 0.9;
+    final radius =
+        (size.width < size.height ? size.width : size.height) / 2 * 0.9;
+
+    // Cần dùng saveLayer để BlendMode.clear hoạt động đúng
+    canvas.saveLayer(Offset.zero & size, Paint());
 
     // Draw outer dim area
     final outerPaint =
@@ -1167,12 +1304,14 @@ class _CircleOverlayPainter extends CustomPainter {
     final circlePaint = Paint()..blendMode = BlendMode.clear;
     canvas.drawCircle(center, radius, circlePaint);
 
-    // Draw circle border
+    canvas.restore();
+
+    // Draw circle border (vẽ sau khi restore để border không bị clear)
     final borderPaint =
         Paint()
           ..color = const Color(0xFF00C979)
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2;
+          ..strokeWidth = 3;
     canvas.drawCircle(center, radius, borderPaint);
   }
 

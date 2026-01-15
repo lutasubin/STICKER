@@ -52,9 +52,22 @@ class AnimatedStickerService {
         throw Exception('Video file not found: ${videoFile.path}');
       }
 
-      final duration = endTime - startTime;
-      if (duration <= 0 || duration > 5) {
-        throw Exception('Invalid duration: $duration seconds (must be 1-5s)');
+      // Auto-adjust duration nếu quá dài
+      var adjustedEndTime = endTime;
+      var duration = endTime - startTime;
+
+      if (duration <= 0) {
+        throw Exception('Invalid duration: $duration seconds (must be > 0s)');
+      }
+
+      // Nếu video dài hơn 5 giây, tự động lấy 5 giây đầu tiên
+      if (duration > 5) {
+        adjustedEndTime = startTime + 5.0;
+        duration = 5.0;
+        AppLogger.i(
+          '[AnimatedStickerService] Video duration too long (${endTime - startTime}s), '
+          'auto-adjusted to 5 seconds (from ${startTime}s to ${adjustedEndTime}s)',
+        );
       }
 
       // Bắt đầu convert video (đây là bước chính, tốn thời gian nhất)
@@ -63,13 +76,14 @@ class AnimatedStickerService {
       // WhatsApp animated sticker requirements:
       // - Size: 512x512 pixels
       // - Format: Animated WebP
-      // - FPS: 10-15 (recommended 10)
-      // - File size: < 100KB
+      // - FPS: 8-15 (recommended 8 cho file nhỏ hơn)
+      // - File size: < 500KB (animated sticker)
       // - Duration: 1-5 seconds
       //
       // Tối ưu: Convert trực tiếp từ video sang animated WebP
       // KHÔNG cần extract frames trước - FFmpeg xử lý trực tiếp nhanh hơn
-      final fps = 10;
+      // FPS 8 thay vì 10 để giảm file size (5s * 8fps = 40 frames thay vì 50)
+      final fps = 8;
       final targetSize = 512;
 
       // Build FFmpeg command tối ưu cho animated WebP
@@ -89,9 +103,9 @@ class AnimatedStickerService {
       // -method 6: encoding method (0-6, 6 = slowest but best compression)
       final videoFilter = _buildVideoFilter(cropMode, targetSize);
 
-      // Tối ưu: Quality 65 ngay từ đầu để đạt < 100KB
-      // Nếu vẫn lớn sẽ re-encode với quality thấp hơn
-      final initialQuality = 65;
+      // Tối ưu: Quality 60 ngay từ đầu để đạt < 500KB cho animated sticker
+      // Video dài (5s) với quality cao sẽ rất nặng, nên dùng quality vừa phải
+      final initialQuality = 60;
 
       // FFmpeg command để tạo animated WebP
       // Lưu ý: Một số build của FFmpeg có thể không hỗ trợ animated WebP trực tiếp
@@ -203,7 +217,7 @@ class AnimatedStickerService {
             videoFile: videoFile,
             outputPath: outputPath,
             startTime: startTime,
-            endTime: endTime,
+            endTime: adjustedEndTime, // Sử dụng adjustedEndTime thay vì endTime
             cropMode: cropMode,
             onProgress: onProgress,
           );
@@ -222,7 +236,7 @@ class AnimatedStickerService {
       );
 
       // If file is too large, try re-encoding with lower quality
-      if (fileSize > 100 * 1024) {
+      if (fileSize > 500 * 1024) {
         AppLogger.w(
           '[AnimatedStickerService] File too large (${(fileSize / 1024).toStringAsFixed(2)} KB), '
           're-encoding with lower quality',
@@ -231,6 +245,7 @@ class AnimatedStickerService {
         // Re-encode with lower quality (skip progress update vì nhanh)
         // Note: Khi re-encode từ WebP, không cần -vf và -r vì đã có sẵn
         final reencodeCommand =
+            '-y '
             '-i "$outputPath" '
             '-c:v libwebp '
             '-quality 50 '
@@ -249,12 +264,13 @@ class AnimatedStickerService {
           );
 
           // If still too large, try even lower quality
-          if (newFileSize > 100 * 1024) {
+          if (newFileSize > 500 * 1024) {
             AppLogger.w(
-              '[AnimatedStickerService] Still too large, trying quality 45',
+              '[AnimatedStickerService] Still too large, trying quality 40',
             );
 
             final finalCommand =
+                '-y '
                 '-i "$outputPath" '
                 '-c:v libwebp '
                 '-quality 40 '
@@ -271,6 +287,35 @@ class AnimatedStickerService {
               AppLogger.i(
                 '[AnimatedStickerService] Final size: ${(finalFileSize / 1024).toStringAsFixed(2)} KB',
               );
+
+              // If STILL too large, try reducing FPS as last resort
+              if (finalFileSize > 500 * 1024) {
+                AppLogger.w(
+                  '[AnimatedStickerService] Still too large after 2 re-encodes, '
+                  'trying to reduce FPS to 6 and quality to 35',
+                );
+
+                final ultraLowCommand =
+                    '-y '
+                    '-i "$outputPath" '
+                    '-r 6 '
+                    '-c:v libwebp '
+                    '-quality 35 '
+                    '-lossless 0 '
+                    '-compression_level 6 '
+                    '-method 6 '
+                    '"$outputPath"';
+
+                final ultraSession = await FFmpegKit.execute(ultraLowCommand);
+                final ultraReturnCode = await ultraSession.getReturnCode();
+
+                if (ReturnCode.isSuccess(ultraReturnCode)) {
+                  final ultraFileSize = await outputFile.length();
+                  AppLogger.i(
+                    '[AnimatedStickerService] Ultra low quality size: ${(ultraFileSize / 1024).toStringAsFixed(2)} KB',
+                  );
+                }
+              }
             }
           }
         }
@@ -371,16 +416,16 @@ class AnimatedStickerService {
         return false;
       }
 
-      // Check file size (< 100KB for WhatsApp sticker)
+      // Check file size (< 500KB for WhatsApp animated sticker)
       final fileSize = await file.length();
       if (fileSize == 0) {
         AppLogger.w('[AnimatedStickerService] File is empty');
         return false;
       }
 
-      if (fileSize > 100 * 1024) {
+      if (fileSize > 500 * 1024) {
         AppLogger.w(
-          '[AnimatedStickerService] File too large: ${(fileSize / 1024).toStringAsFixed(2)} KB',
+          '[AnimatedStickerService] File too large: ${(fileSize / 1024).toStringAsFixed(2)} KB (must be < 500KB for animated sticker)',
         );
         return false;
       }
@@ -430,7 +475,19 @@ class AnimatedStickerService {
       '[AnimatedStickerService] Using fallback: extracting multiple frames for animated WebP',
     );
 
-    final duration = endTime - startTime;
+    // Auto-adjust duration nếu quá dài (tương tự như main method)
+    var adjustedEndTime = endTime;
+    var duration = endTime - startTime;
+
+    if (duration > 5) {
+      adjustedEndTime = startTime + 5.0;
+      duration = 5.0;
+      AppLogger.i(
+        '[AnimatedStickerService] Fallback: Video duration too long (${endTime - startTime}s), '
+        'auto-adjusted to 5 seconds',
+      );
+    }
+
     final fps = 10; // Target FPS for animated WebP
     final frameCount = (duration * fps).round().clamp(5, 50); // 5-50 frames
     final frameInterval = duration / frameCount;
@@ -444,7 +501,11 @@ class AnimatedStickerService {
     // Extract multiple frames
     final frames = <img.Image>[];
     for (var i = 0; i < frameCount; i++) {
-      final frameTime = startTime + (i * frameInterval);
+      // Đảm bảo frameTime không vượt quá adjustedEndTime
+      final frameTime = (startTime + (i * frameInterval)).clamp(
+        startTime,
+        adjustedEndTime,
+      );
       final frameTimeMs = (frameTime * 1000).toInt();
 
       onProgress?.call(
@@ -521,7 +582,7 @@ class AnimatedStickerService {
       '[AnimatedStickerService] Static WebP size: ${fileSize / 1024} KB',
     );
 
-    if (fileSize > 100 * 1024) {
+    if (fileSize > 500 * 1024) {
       // Re-compress với quality thấp hơn
       AppLogger.w('[AnimatedStickerService] File too large, re-compressing');
       final recompressed = await FlutterImageCompress.compressWithList(
@@ -575,14 +636,25 @@ class AnimatedStickerService {
     // 2. pad: Pad video để đạt đúng 512x512 với padding đen trong suốt
     //    (ow-iw)/2, (oh-ih)/2: center padding
     //    color=black@0: màu đen trong suốt (alpha=0)
+    // 3. format=rgba: Đảm bảo có alpha channel (chỉ khi cần circle mask)
+    // 4. geq: Apply circle mask nếu cần (set alpha = 0 cho pixels ngoài vòng tròn)
 
+    // Base filter cho tất cả modes: scale + pad
     String filter =
         'scale=$targetSize:$targetSize:force_original_aspect_ratio=decrease:flags=lanczos,'
         'pad=$targetSize:$targetSize:(ow-iw)/2:(oh-ih)/2:color=black@0';
 
-    // Note: Circle mask sẽ được xử lý sau khi convert nếu cần
-    // Vì FFmpeg circle filter phức tạp và tốn tài nguyên hơn
-    // Tạm thời giữ nguyên filter scale+pad cho hiệu suất tốt nhất
+    // Apply circle mask nếu cropMode = circle
+    // Sử dụng geq filter để tạo circular alpha mask
+    // Formula: distance từ pixel đến center < radius thì alpha = 255, ngược lại alpha = 0
+    if (cropMode == CropShapeMode.circle) {
+      final center = targetSize / 2; // 256 for 512x512
+      final radius = center * 0.95; // 95% để có border nhẹ
+      // Thêm format=rgba và geq filter để tạo circular mask
+      // geq: r/g/b giữ nguyên, alpha set dựa trên distance từ center
+      filter +=
+          ',format=rgba,geq=r=r(X\\,Y):g=g(X\\,Y):b=b(X\\,Y):a=if(lt(hypot(X-$center\\,Y-$center)\\,$radius)\\,255\\,0)';
+    }
 
     return filter;
   }
