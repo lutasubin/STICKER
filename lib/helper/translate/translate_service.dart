@@ -123,6 +123,10 @@ class TranslationService extends Translations {
 
       // Edit Sticker
       'edit_sticker_title': 'Edit Sticker',
+      'edit_animated_sticker_title': 'Edit Animated Sticker',
+      'edit_animated_sticker_message':
+          'Current device/FFmpeg does not support editing animated WebP directly. Please recreate the animated sticker from video to add text.',
+      'ok': 'OK',
       'create_button': 'Create',
 
       // Text Edit
@@ -200,7 +204,8 @@ class TranslationService extends Translations {
       'duration': 'Duration',
       'start': 'Start',
       'end': 'End',
-      'animated_duration_hint': 'WhatsApp supports 1-5 seconds animated stickers',
+      'animated_duration_hint':
+          'WhatsApp supports 1-5 seconds animated stickers',
       'animated_duration_too_short': 'Duration too short (min 1s)',
       'animated_duration_too_long': 'Duration too long (max 5s)',
       'next': 'Next',
@@ -211,7 +216,12 @@ class TranslationService extends Translations {
       'compressing_file': 'Compressing file...',
       'saving_file': 'Saving file...',
       'completed': 'Completed',
+      'overlaying_text_on_video': 'Overlaying text on video...',
+      'converting_video_to_webp': 'Converting video to WebP...',
+      'video_exported': 'Video exported',
       'error_process_video': 'Failed to process video: @error',
+      'error_process_video_with_overlay':
+          'Failed to process video with overlay: @error',
     },
 
     'vi_VN': {
@@ -268,6 +278,10 @@ class TranslationService extends Translations {
 
       // Edit Sticker
       'edit_sticker_title': 'Chỉnh Sửa Sticker',
+      'edit_animated_sticker_title': 'Chỉnh Sửa Sticker Động',
+      'edit_animated_sticker_message':
+          'Thiết bị/FFmpeg hiện tại không hỗ trợ chỉnh sửa trực tiếp WebP động. Vui lòng tạo lại sticker động từ video để thêm chữ.',
+      'ok': 'OK',
       'create_button': 'Tạo',
 
       // Text Edit
@@ -356,7 +370,12 @@ class TranslationService extends Translations {
       'compressing_file': 'Đang nén file...',
       'saving_file': 'Đang lưu file...',
       'completed': 'Hoàn thành',
+      'overlaying_text_on_video': 'Đang thêm text lên video...',
+      'converting_video_to_webp': 'Đang chuyển đổi video sang WebP...',
+      'video_exported': 'Đã xuất video',
       'error_process_video': 'Xử lý video thất bại: @error',
+      'error_process_video_with_overlay':
+          'Xử lý video với text thất bại: @error',
     },
 
     'ru_RU': {

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sticker_app/controller/animated_sticker/animated_sticker_controller.dart';
 import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
@@ -264,131 +263,14 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
       // Pause video trước khi process
       await _videoController?.pause();
 
-      // Process video to animated WebP
-      final controller = Get.find<AnimatedStickerController>();
-
-      // Tạo output path
-      final dir = await getApplicationDocumentsDirectory();
-      final packDir = Directory(
-        '${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${pack.id}',
-      );
-      if (!await packDir.exists()) {
-        await packDir.create(recursive: true);
-      }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final outputPath =
-          '${packDir.path}${Platform.pathSeparator}$timestamp.webp';
-
-      // Process video
-      final result = await controller.processVideoToAnimatedSticker(
-        videoFile: _videoFile,
-        outputPath: outputPath,
-        startTime: _startTime,
-        endTime: _endTime,
-        cropMode: _cropMode,
-      );
-
-      if (result == null) {
-        throw Exception('Failed to process video');
-      }
-
-      // Save to pack
-      final service = Get.find<UserStickerPackService>();
-      final outputUri = Uri.file(result).toString();
-
-      try {
-        if (_replaceStickerUri != null) {
-          // Replace existing sticker
-          service.replaceStickerUri(
-            packId: pack.id,
-            oldStickerFileUri: _replaceStickerUri!,
-            newStickerFileUri: outputUri,
-          );
-        } else {
-          // Add new sticker - specify isAnimated = true vì đây là animated sticker
-          service.addStickerUri(
-            packId: pack.id,
-            stickerFileUri: outputUri,
-            isAnimatedSticker: true, // Đây là animated sticker từ video
-          );
-        }
-      } catch (e) {
-        // Validation error: sticker type không match với pack type
-        if (mounted) {
-          Get.snackbar(
-            'Lỗi',
-            e.toString(),
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-            duration: const Duration(seconds: 4),
-          );
-        }
-        return; // Không navigate nếu có lỗi
-      }
-
       if (!mounted) return;
 
-      // Lấy pack đã được update - kiểm tra pack có tồn tại không
-      final updatedPack = service.getById(pack.id);
-      if (updatedPack == null) {
-        // Pack không tồn tại: hiển thị dialog để chọn/tạo pack động
-        debugPrint(
-          '[CropVideoScreen] Pack not found after save: ${pack.id}, showing dialog',
-        );
-        if (mounted) {
-          setState(() => _processing = false);
-          await _showSaveStickerDialog();
-        }
-        return;
-      }
+      // Navigate đến edit screen với VIDEO FILE (chưa convert)
+      // Edit screen sẽ add text trên video rồi convert sang WebP
+      setState(() => _processing = false);
 
-      // Show success và navigate
-      Get.snackbar(
-        'success_title'.tr,
-        'success_saved_to_pack'.trParams({'title': updatedPack.title}),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFF00C979),
-        colorText: Colors.white,
-      );
-
-      // Navigate logic:
-      // - Nếu là pack mới (_isNewPack) hoặc _goToUserPackDetail → navigate đến pack detail
-      // - Ngược lại → navigate về My Sticker screen
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted) return;
-
-      try {
-        if (_isNewPack) {
-          // Pack mới: navigate đến pack detail screen
-          Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else if (_goToUserPackDetail) {
-          // Thêm vào pack có sẵn từ pack detail: quay lại pack detail với data mới
-          // Clear navigation stack và navigate đến pack detail
-          // Để khi bấm back từ pack detail sẽ quay về mySticker, không phải select video
-          Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else {
-          // Navigate về My Sticker screen
-          Get.until((route) => route.settings.name == AppRoutes.mySticker);
-        }
-      } catch (e) {
-        debugPrint('Navigation error: $e');
-        // Fallback: navigate về My Sticker screen
-        Get.offAllNamed(AppRoutes.mySticker);
-        // Nếu là pack mới, navigate đến pack detail
-        if (_isNewPack) {
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else if (_goToUserPackDetail) {
-          // Thêm vào pack có sẵn từ pack detail: quay lại pack detail với data mới
-          // Clear navigation stack và navigate đến pack detail
-          // Để khi bấm back từ pack detail sẽ quay về mySticker, không phải select video
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        }
-      }
+      // Navigate đến edit animated sticker screen
+      await _navigateToEditScreen(pack);
     } catch (e, st) {
       debugPrint('_processAndSaveToPack error: $e');
       debugPrint('$st');
@@ -406,65 +288,53 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
     }
   }
 
-  /// Hiện dialog để chọn pack hoặc tạo pack mới (giống EditStickerScreen)
-  Future<void> _showSaveStickerDialog() async {
-    // Process video trước (tạo sticker file tạm)
-    setState(() => _processing = true);
-
-    String? tempStickerPath;
-    try {
-      // Validate duration
-      final duration = _endTime - _startTime;
-      if (duration < 1) {
-        throw Exception('animated_duration_too_short'.tr);
-      }
-      if (duration > 5) {
-        throw Exception('animated_duration_too_long'.tr);
-      }
-
-      // Pause video trước khi process
-      await _videoController?.pause();
-
-      // Process video to animated WebP
-      final controller = Get.find<AnimatedStickerController>();
-
-      // Tạo output path tạm (dùng temp directory)
-      final dir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      tempStickerPath =
-          '${dir.path}${Platform.pathSeparator}temp_video_$timestamp.webp';
-
-      // Process video
-      final result = await controller.processVideoToAnimatedSticker(
-        videoFile: _videoFile,
-        outputPath: tempStickerPath,
-        startTime: _startTime,
-        endTime: _endTime,
-        cropMode: _cropMode,
+  /// Navigate đến EditAnimatedStickerScreen để add text trên video rồi convert
+  Future<void> _navigateToEditScreen(UserStickerPack pack) async {
+    // Validate duration trước
+    final duration = _endTime - _startTime;
+    if (duration < 1) {
+      Get.snackbar(
+        'error_generic_title'.tr,
+        'animated_duration_too_short'.tr,
+        snackPosition: SnackPosition.BOTTOM,
       );
-
-      if (result == null) {
-        throw Exception('Failed to process video');
-      }
-
-      tempStickerPath = result;
-    } catch (e, st) {
-      debugPrint('_showSaveStickerDialog process error: $e');
-      debugPrint('$st');
-      if (mounted) {
-        setState(() => _processing = false);
-        Get.snackbar(
-          'error_generic_title'.tr,
-          e.toString(),
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      }
+      return;
+    }
+    if (duration > 5) {
+      Get.snackbar(
+        'error_generic_title'.tr,
+        'animated_duration_too_long'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
       return;
     }
 
-    if (!mounted) return;
+    // Navigate đến edit animated sticker screen với video file
+    // Edit screen sẽ add text trên video rồi convert sang WebP
+    await Get.toNamed(
+      AppRoutes.editAnimatedSticker,
+      arguments: {
+        'videoFile': _videoFile.path, // Video file path (chưa convert)
+        'startTime': _startTime,
+        'endTime': _endTime,
+        'cropMode':
+            _cropMode.name, // Dùng .name thay vì .toString() để parse đúng
+        'pack': pack,
+        'replaceStickerUri': _replaceStickerUri,
+        'goToUserPackDetail': _goToUserPackDetail,
+        'isNewPack': _isNewPack,
+        'isTempFile': true, // Indicate it's a temporary file from crop
+      },
+    );
+  }
 
-    setState(() => _processing = false);
+  /// Hiện dialog để chọn pack hoặc tạo pack mới
+  /// Sau khi chọn pack → Navigate đến EditAnimatedStickerScreen để add text
+  Future<void> _showSaveStickerDialog() async {
+    // Pause video
+    await _videoController?.pause();
+
+    if (!mounted) return;
 
     final service = Get.find<UserStickerPackService>();
     // CHỈ hiển thị pack animated (vì đây là flow tạo sticker động)
@@ -558,7 +428,8 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
                           title: packName,
                           isAnimated: true,
                         );
-                        await _saveTempStickerToPack(tempStickerPath!, newPack);
+                        // Navigate đến edit screen để add text trên video
+                        await _navigateToEditScreen(newPack);
                       }
                     },
                     icon: const Icon(Icons.add, color: Colors.white),
@@ -733,10 +604,11 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
                   // Save button
                   if (allPacks.isNotEmpty)
                     ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         final packToSave = selectedPack ?? allPacks.first;
                         Navigator.pop(context); // Đóng bottom sheet
-                        _saveTempStickerToPack(tempStickerPath!, packToSave);
+                        // Navigate đến edit screen để add text trên video
+                        await _navigateToEditScreen(packToSave);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF00C979),
@@ -761,149 +633,6 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
         );
       },
     );
-  }
-
-  /// Lưu sticker file tạm vào pack (move từ temp sang pack directory)
-  Future<void> _saveTempStickerToPack(
-    String tempStickerPath,
-    UserStickerPack pack,
-  ) async {
-    if (_processing) return;
-
-    setState(() => _processing = true);
-
-    try {
-      final tempFile = File(tempStickerPath);
-      if (!await tempFile.exists()) {
-        throw Exception('Temp sticker file not found');
-      }
-
-      // Tạo pack directory
-      final dir = await getApplicationDocumentsDirectory();
-      final packDir = Directory(
-        '${dir.path}${Platform.pathSeparator}stickers${Platform.pathSeparator}${pack.id}',
-      );
-      if (!await packDir.exists()) {
-        await packDir.create(recursive: true);
-      }
-
-      // Move file từ temp sang pack directory
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final finalPath =
-          '${packDir.path}${Platform.pathSeparator}$timestamp.webp';
-      await tempFile.copy(finalPath);
-      await tempFile.delete(); // Xóa file tạm
-
-      final service = Get.find<UserStickerPackService>();
-      final outputUri = Uri.file(finalPath).toString();
-
-      try {
-        if (_replaceStickerUri != null) {
-          // Replace existing sticker
-          service.replaceStickerUri(
-            packId: pack.id,
-            oldStickerFileUri: _replaceStickerUri!,
-            newStickerFileUri: outputUri,
-          );
-        } else {
-          // Add new sticker - specify isAnimated = true vì đây là animated sticker
-          service.addStickerUri(
-            packId: pack.id,
-            stickerFileUri: outputUri,
-            isAnimatedSticker: true, // Đây là animated sticker từ video
-          );
-        }
-      } catch (e) {
-        // Validation error: sticker type không match với pack type
-        if (mounted) {
-          Get.snackbar(
-            'Lỗi',
-            e.toString(),
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red,
-            colorText: Colors.white,
-            duration: const Duration(seconds: 4),
-          );
-        }
-        return; // Không navigate nếu có lỗi
-      }
-
-      if (!mounted) return;
-
-      // Lấy pack đã được update - kiểm tra pack có tồn tại không
-      final updatedPack = service.getById(pack.id);
-      if (updatedPack == null) {
-        // Pack không tồn tại: hiển thị dialog để chọn/tạo pack động
-        debugPrint(
-          '[CropVideoScreen] Pack not found after save: ${pack.id}, showing dialog',
-        );
-        if (mounted) {
-          setState(() => _processing = false);
-          await _showSaveStickerDialog();
-        }
-        return;
-      }
-
-      // Show success và navigate
-      Get.snackbar(
-        'success_title'.tr,
-        'success_saved_to_pack'.trParams({'title': updatedPack.title}),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: const Color(0xFF00C979),
-        colorText: Colors.white,
-      );
-
-      // Navigate logic:
-      // - Nếu là pack mới (_isNewPack) hoặc _goToUserPackDetail → navigate đến pack detail
-      // - Ngược lại → navigate về My Sticker screen
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      if (!mounted) return;
-
-      try {
-        if (_isNewPack) {
-          // Pack mới: navigate đến pack detail screen
-          Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else if (_goToUserPackDetail) {
-          // Thêm vào pack có sẵn từ pack detail: quay lại pack detail với data mới
-          // Clear navigation stack và navigate đến pack detail
-          // Để khi bấm back từ pack detail sẽ quay về mySticker, không phải select video
-          Get.offAllNamed(AppRoutes.mySticker);
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else {
-          // Navigate về My Sticker screen
-          Get.until((route) => route.settings.name == AppRoutes.mySticker);
-        }
-      } catch (e) {
-        debugPrint('Navigation error: $e');
-        // Fallback: navigate về My Sticker screen
-        Get.offAllNamed(AppRoutes.mySticker);
-        // Nếu là pack mới, navigate đến pack detail
-        if (_isNewPack) {
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        } else if (_goToUserPackDetail) {
-          // Thêm vào pack có sẵn từ pack detail: quay lại pack detail với data mới
-          // Clear navigation stack đã được thực hiện ở trên (Get.offAllNamed)
-          // Chỉ cần navigate đến pack detail
-          Get.toNamed(AppRoutes.userPackDetail, arguments: updatedPack);
-        }
-      }
-    } catch (e, st) {
-      debugPrint('_saveTempStickerToPack error: $e');
-      debugPrint('$st');
-      if (mounted) {
-        Get.snackbar(
-          'error_generic_title'.tr,
-          e.toString(),
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _processing = false);
-      }
-    }
   }
 
   @override

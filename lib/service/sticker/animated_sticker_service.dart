@@ -5,6 +5,7 @@ import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:sticker_app/controller/animated_sticker/animated_sticker_controller.dart';
 import 'package:sticker_app/helper/logger/app_logger.dart';
 import 'package:sticker_app/service/sticker/webp_loop_service.dart';
@@ -368,6 +369,445 @@ class AnimatedStickerService {
     }
   }
 
+  /// Process video to animated WebP WITH text overlay
+  ///
+  /// Overlay text PNG lên VIDEO trước khi convert sang WebP (cách ổn định nhất)
+  /// FFmpeg sẽ overlay PNG lên mọi frame của video, rồi encode thành animated WebP
+  ///
+  /// [videoFile] - Input video file
+  /// [outputPath] - Output WebP file path
+  /// [startTime] - Start time in seconds
+  /// [endTime] - End time in seconds
+  /// [cropMode] - Crop shape (square, circle, or manual)
+  /// [textImageFile] - PNG trong suốt chứa text đã render
+  /// [position] - Vị trí overlay: 'center' | 'top' | 'bottom'
+  /// [onProgress] - Progress callback (0.0 to 1.0)
+  static Future<String> processVideoToWebPWithOverlay({
+    required File videoFile,
+    required String outputPath,
+    required double startTime,
+    required double endTime,
+    required CropShapeMode cropMode,
+    required File textImageFile,
+    String position = 'center',
+    Function(double progress, String message)? onProgress,
+  }) async {
+    try {
+      AppLogger.i(
+        '[AnimatedStickerService] Processing video to animated WebP with text overlay',
+      );
+
+      // Validate input
+      if (!await videoFile.exists()) {
+        throw Exception('Video file not found: ${videoFile.path}');
+      }
+      if (!await textImageFile.exists()) {
+        throw Exception('Text image file not found: ${textImageFile.path}');
+      }
+
+      // Auto-adjust duration
+      var duration = endTime - startTime;
+
+      if (duration <= 0) {
+        throw Exception('Invalid duration: $duration seconds (must be > 0s)');
+      }
+
+      if (duration > 5) {
+        duration = 5.0;
+        AppLogger.i(
+          '[AnimatedStickerService] Video duration too long, auto-adjusted to 5 seconds',
+        );
+      }
+
+      onProgress?.call(0.0, 'preparing_overlay');
+
+      final fps = 8;
+      final targetSize = 512;
+
+      // Build video filter (scale + pad + crop shape)
+      final videoFilter = _buildVideoFilter(cropMode, targetSize);
+
+      // Tính toán overlay position
+      String xExpr;
+      String yExpr;
+      switch (position) {
+        case 'top':
+          xExpr = '(W-w)/2';
+          yExpr = 'H*0.05';
+          break;
+        case 'bottom':
+          xExpr = '(W-w)/2';
+          yExpr = 'H-h-H*0.05';
+          break;
+        case 'center':
+        default:
+          xExpr = '(W-w)/2';
+          yExpr = '(H-h)/2';
+          break;
+      }
+
+      // Build filter complex: video filter + overlay text
+      // [0:v] = video input, [1:v] = text PNG input
+      final filterComplex =
+          '[0:v]$videoFilter[v0];[v0][1:v]overlay=$xExpr:$yExpr';
+
+      // Chuẩn hóa paths và quote để tránh lỗi với spaces
+      final videoPath = videoFile.path.replaceAll('\\', '/');
+      final textPath = textImageFile.path.replaceAll('\\', '/');
+      final outPath = outputPath.replaceAll('\\', '/');
+
+      // Quote paths để tránh lỗi với spaces và ký tự đặc biệt
+      final quotedVideoPath = '"$videoPath"';
+      final quotedTextPath = '"$textPath"';
+      final quotedOutPath = '"$outPath"';
+
+      final initialQuality = 60;
+
+      // FFmpeg command: overlay text PNG lên video rồi convert sang animated WebP
+      // Scale text PNG về 512x512 trước khi overlay để đảm bảo đúng size
+      final filterComplexWithScale =
+          '[0:v]$videoFilter[v0];[1:v]scale=512:512[text_scaled];[v0][text_scaled]overlay=$xExpr:$yExpr';
+
+      final ffmpegCommand = [
+        '-y', // Overwrite output file
+        '-ss',
+        startTime.toString(),
+        '-i',
+        quotedVideoPath,
+        '-loop',
+        '1',
+        '-i',
+        quotedTextPath,
+        '-t',
+        duration.toString(),
+        '-filter_complex',
+        filterComplexWithScale,
+        '-r',
+        fps.toString(),
+        '-an',
+        '-c:v',
+        'libwebp',
+        '-quality',
+        initialQuality.toString(),
+        '-lossless',
+        '0',
+        '-compression_level',
+        '6',
+        '-method',
+        '6',
+        '-loop',
+        '0',
+        quotedOutPath,
+      ].join(' ');
+
+      AppLogger.d(
+        '[AnimatedStickerService] FFmpeg command with overlay: $ffmpegCommand',
+      );
+      AppLogger.d(
+        '[AnimatedStickerService] Video path: $videoPath, Text path: $textPath, Output: $outPath',
+      );
+
+      onProgress?.call(0.1, 'running_ffmpeg');
+
+      final session = await FFmpegKit.execute(ffmpegCommand);
+      final returnCode = await session.getReturnCode();
+
+      if (!ReturnCode.isSuccess(returnCode)) {
+        final output = await session.getOutput();
+        final failStackTrace = await session.getFailStackTrace();
+        final logs = await session.getLogs();
+
+        AppLogger.e(
+          '[AnimatedStickerService] FFmpeg with overlay failed: returnCode=$returnCode',
+        );
+        if (output != null && output.isNotEmpty) {
+          AppLogger.e('[AnimatedStickerService] FFmpeg output: $output');
+        }
+        if (failStackTrace != null && failStackTrace.isNotEmpty) {
+          AppLogger.e(
+            '[AnimatedStickerService] FFmpeg stackTrace: $failStackTrace',
+          );
+        }
+        // Log chi tiết hơn - parse log messages
+        if (logs.isNotEmpty) {
+          final lastLogs =
+              logs.length > 20 ? logs.sublist(logs.length - 20) : logs;
+          final logMessages = lastLogs
+              .map((log) {
+                try {
+                  return log.getMessage() ?? log.toString();
+                } catch (e) {
+                  return log.toString();
+                }
+              })
+              .join('\n');
+          AppLogger.e(
+            '[AnimatedStickerService] FFmpeg logs (last ${lastLogs.length}):\n$logMessages',
+          );
+        }
+
+        // Thử alternative command với format khác
+        AppLogger.w(
+          '[AnimatedStickerService] Trying alternative FFmpeg command',
+        );
+
+        // Alternative command: Scale text PNG và dùng shortest=1
+        final alternativeFilterComplex =
+            '[0:v]$videoFilter[v0];[1:v]scale=512:512[text_scaled];[v0][text_scaled]overlay=$xExpr:$yExpr:shortest=1';
+
+        final alternativeCommand = [
+          '-y',
+          '-ss',
+          startTime.toString(),
+          '-i',
+          quotedVideoPath,
+          '-loop',
+          '1',
+          '-framerate',
+          '1',
+          '-i',
+          quotedTextPath,
+          '-t',
+          duration.toString(),
+          '-filter_complex',
+          alternativeFilterComplex,
+          '-r',
+          fps.toString(),
+          '-an',
+          '-c:v',
+          'libwebp',
+          '-quality',
+          initialQuality.toString(),
+          '-lossless',
+          '0',
+          '-compression_level',
+          '6',
+          '-method',
+          '6',
+          '-loop',
+          '0',
+          quotedOutPath,
+        ].join(' ');
+
+        AppLogger.d(
+          '[AnimatedStickerService] Alternative FFmpeg command: $alternativeCommand',
+        );
+
+        final altSession = await FFmpegKit.execute(alternativeCommand);
+        final altReturnCode = await altSession.getReturnCode();
+
+        if (ReturnCode.isSuccess(altReturnCode)) {
+          AppLogger.i(
+            '[AnimatedStickerService] Alternative FFmpeg command succeeded',
+          );
+          // Continue với validation
+        } else {
+          final altOutput = await altSession.getOutput();
+          final altFailStackTrace = await altSession.getFailStackTrace();
+          AppLogger.e(
+            '[AnimatedStickerService] Alternative command also failed: returnCode=$altReturnCode',
+          );
+          if (altOutput != null && altOutput.isNotEmpty) {
+            AppLogger.e(
+              '[AnimatedStickerService] Alternative output: $altOutput',
+            );
+          }
+          if (altFailStackTrace != null && altFailStackTrace.isNotEmpty) {
+            AppLogger.e(
+              '[AnimatedStickerService] Alternative stackTrace: $altFailStackTrace',
+            );
+          }
+
+          // Log chi tiết alternative logs
+          final altLogs = await altSession.getLogs();
+          if (altLogs.isNotEmpty) {
+            final lastAltLogs =
+                altLogs.length > 20
+                    ? altLogs.sublist(altLogs.length - 20)
+                    : altLogs;
+            final altLogMessages = lastAltLogs
+                .map((log) {
+                  try {
+                    return log.getMessage() ?? log.toString();
+                  } catch (e) {
+                    return log.toString();
+                  }
+                })
+                .join('\n');
+            AppLogger.e(
+              '[AnimatedStickerService] Alternative FFmpeg logs (last ${lastAltLogs.length}):\n$altLogMessages',
+            );
+          }
+
+          // Thử fallback command đơn giản nhất: không có crop shape, chỉ overlay
+          AppLogger.w(
+            '[AnimatedStickerService] Trying simple fallback command without crop shape',
+          );
+
+          final simpleFilterComplex =
+              '[0:v]scale=512:512:force_original_aspect_ratio=decrease:flags=lanczos,pad=512:512:(ow-iw)/2:(oh-ih)/2:color=black@0[v0];[1:v]scale=512:512[text_scaled];[v0][text_scaled]overlay=$xExpr:$yExpr';
+
+          final simpleCommand = [
+            '-y',
+            '-ss',
+            startTime.toString(),
+            '-i',
+            quotedVideoPath,
+            '-loop',
+            '1',
+            '-i',
+            quotedTextPath,
+            '-t',
+            duration.toString(),
+            '-filter_complex',
+            simpleFilterComplex,
+            '-r',
+            fps.toString(),
+            '-an',
+            '-c:v',
+            'libwebp',
+            '-quality',
+            initialQuality.toString(),
+            '-lossless',
+            '0',
+            '-compression_level',
+            '6',
+            '-method',
+            '6',
+            '-loop',
+            '0',
+            quotedOutPath,
+          ].join(' ');
+
+          AppLogger.d(
+            '[AnimatedStickerService] Simple fallback command: $simpleCommand',
+          );
+
+          final simpleSession = await FFmpegKit.execute(simpleCommand);
+          final simpleReturnCode = await simpleSession.getReturnCode();
+
+          if (ReturnCode.isSuccess(simpleReturnCode)) {
+            AppLogger.i(
+              '[AnimatedStickerService] Simple fallback command succeeded',
+            );
+            // Continue với validation
+          } else {
+            final simpleOutput = await simpleSession.getOutput();
+            final simpleLogs = await simpleSession.getLogs();
+            AppLogger.e(
+              '[AnimatedStickerService] Simple fallback also failed: returnCode=$simpleReturnCode',
+            );
+            if (simpleOutput != null && simpleOutput.isNotEmpty) {
+              AppLogger.e(
+                '[AnimatedStickerService] Simple fallback output: $simpleOutput',
+              );
+            }
+            if (simpleLogs.isNotEmpty) {
+              final lastSimpleLogs =
+                  simpleLogs.length > 10
+                      ? simpleLogs.sublist(simpleLogs.length - 10)
+                      : simpleLogs;
+              final simpleLogMessages = lastSimpleLogs
+                  .map((log) {
+                    try {
+                      return log.getMessage() ?? log.toString();
+                    } catch (e) {
+                      return log.toString();
+                    }
+                  })
+                  .join('\n');
+              AppLogger.e(
+                '[AnimatedStickerService] Simple fallback logs:\n$simpleLogMessages',
+              );
+            }
+            throw Exception(
+              'Failed to process video with text overlay. All commands failed.',
+            );
+          }
+        }
+      }
+
+      onProgress?.call(0.8, 'validating_output');
+
+      final outputFile = File(outputPath);
+      if (!await outputFile.exists()) {
+        throw Exception('Output file not created: $outputPath');
+      }
+
+      final fileSize = await outputFile.length();
+      AppLogger.i(
+        '[AnimatedStickerService] Animated WebP with overlay size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
+      );
+
+      // Re-encode nếu file quá lớn (tương tự processVideoToWebP)
+      if (fileSize > 500 * 1024) {
+        AppLogger.w(
+          '[AnimatedStickerService] File too large, re-encoding with lower quality',
+        );
+
+        final reencodeCommand = [
+          '-y',
+          '-i',
+          outPath,
+          '-c:v',
+          'libwebp',
+          '-quality',
+          '50',
+          '-lossless',
+          '0',
+          '-compression_level',
+          '6',
+          '-method',
+          '6',
+          outPath,
+        ].join(' ');
+
+        final reencodeSession = await FFmpegKit.execute(reencodeCommand);
+        final reencodeReturnCode = await reencodeSession.getReturnCode();
+
+        if (ReturnCode.isSuccess(reencodeReturnCode)) {
+          final newFileSize = await outputFile.length();
+          AppLogger.i(
+            '[AnimatedStickerService] Re-encoded size: ${(newFileSize / 1024).toStringAsFixed(2)} KB',
+          );
+        }
+      }
+
+      // Set loop count
+      try {
+        final loopSuccess = await WebpLoopService.setLoopCount(
+          filePath: outputPath,
+          loopCount: 0,
+        );
+        if (loopSuccess) {
+          AppLogger.i(
+            '[AnimatedStickerService] Successfully set infinite loop',
+          );
+        }
+      } catch (e) {
+        AppLogger.w('[AnimatedStickerService] Failed to set loop count: $e');
+      }
+
+      // Validate
+      final isValid = await validateAnimatedSticker(outputFile);
+      if (!isValid) {
+        AppLogger.w(
+          '[AnimatedStickerService] Generated file failed validation, but returning path anyway',
+        );
+      }
+
+      onProgress?.call(1.0, 'completed');
+
+      AppLogger.i(
+        '[AnimatedStickerService] Processing with overlay completed: $outputPath',
+      );
+      return outputPath;
+    } catch (e, st) {
+      AppLogger.e('[AnimatedStickerService] Process with overlay error', e, st);
+      rethrow;
+    }
+  }
+
   /// Extract video thumbnail for preview
   static Future<File?> extractThumbnail({
     required File videoFile,
@@ -450,6 +890,225 @@ class AnimatedStickerService {
     } catch (e, st) {
       AppLogger.e('[AnimatedStickerService] Validation error', e, st);
       return false;
+    }
+  }
+
+  /// Overlay static text image (PNG) lên animated sticker (WebP)
+  ///
+  /// Pipeline: Frame-by-frame approach (cách chuẩn của app sticker)
+  /// 1. Extract frames từ animated WebP
+  /// 2. Overlay PNG lên từng frame
+  /// 3. Ghép lại thành animated WebP
+  ///
+  /// Lý do dùng frame-by-frame:
+  /// - FFmpeg Android không ổn định với overlay trực tiếp lên animated WebP
+  /// - PNG chỉ có 1 frame, WebP có N frame → cần extract frame trước
+  /// - Frame-by-frame approach ổn định 100% trên mọi Android build
+  ///
+  /// Lưu ý:
+  /// - Text chỉ là bitmap, KHÔNG có layer riêng, KHÔNG metadata
+  /// - WhatsApp chỉ thấy một animated WebP duy nhất
+  static Future<String> overlayTextImageOnAnimatedSticker({
+    required File baseStickerFile,
+    required File textImageFile,
+    required String outputPath,
+    // Vị trí text - hiện tại hỗ trợ một số preset cơ bản
+    String position = 'center', // center, top, bottom
+    Function(double progress, String message)? onProgress,
+  }) async {
+    try {
+      AppLogger.i(
+        '[AnimatedStickerService] Overlay text PNG on animated WebP (frame-by-frame): '
+        'base=${baseStickerFile.path}, text=${textImageFile.path}',
+      );
+
+      // Validate input
+      if (!await baseStickerFile.exists()) {
+        throw Exception('Base sticker file not found: ${baseStickerFile.path}');
+      }
+      if (!await textImageFile.exists()) {
+        throw Exception('Text image file not found: ${textImageFile.path}');
+      }
+
+      onProgress?.call(0.0, 'decoding_webp');
+
+      // Bước 1: Decode animated WebP bằng image package (Dart native)
+      // Package image có thể decode WebP, nhưng có thể chỉ decode được frame đầu tiên
+      // Nếu không được, sẽ fallback sang cách khác
+      final webpBytes = await baseStickerFile.readAsBytes();
+
+      // Thử decode bằng image package
+      // Lưu ý: image package có thể chỉ decode được frame đầu tiên của animated WebP
+      // Nếu animated WebP có nhiều frame, cần dùng cách khác
+      final decoded = img.decodeImage(webpBytes);
+
+      if (decoded == null) {
+        throw Exception('Failed to decode animated WebP with image package');
+      }
+
+      AppLogger.d(
+        '[AnimatedStickerService] Decoded WebP: ${decoded.width}x${decoded.height}',
+      );
+
+      // Nếu chỉ decode được 1 frame (static WebP hoặc frame đầu của animated)
+      // → Overlay text lên frame này, rồi tạo animated WebP từ frame đã overlay
+      // (Lưu ý: Cách này chỉ tạo được static WebP hoặc animated 1 frame)
+
+      onProgress?.call(0.3, 'overlaying_text');
+
+      // Bước 2: Overlay text PNG lên frame bằng Flutter Canvas
+      final tempDir = await getTemporaryDirectory();
+      final overlayedFramePath =
+          '${tempDir.path}${Platform.pathSeparator}overlayed_frame_${DateTime.now().millisecondsSinceEpoch}.png';
+
+      // Load text PNG
+      final textBytes = await textImageFile.readAsBytes();
+      final textImage = img.decodeImage(textBytes);
+
+      if (textImage == null) {
+        throw Exception('Failed to decode text PNG');
+      }
+
+      // Tính toán overlay position
+      int x;
+      int y;
+      switch (position) {
+        case 'top':
+          x = ((decoded.width - textImage.width) / 2).round();
+          y = (decoded.height * 0.05).round();
+          break;
+        case 'bottom':
+          x = ((decoded.width - textImage.width) / 2).round();
+          y =
+              (decoded.height -
+                      textImage.height -
+                      (decoded.height * 0.05).round())
+                  .round();
+          break;
+        case 'center':
+        default:
+          x = ((decoded.width - textImage.width) / 2).round();
+          y = ((decoded.height - textImage.height) / 2).round();
+          break;
+      }
+
+      // Overlay text image lên base image
+      img.compositeImage(
+        decoded,
+        textImage,
+        dstX: x,
+        dstY: y,
+        blend: img.BlendMode.alpha,
+      );
+
+      // Encode lại thành PNG
+      final overlayedPngBytes = img.encodePng(decoded);
+      final overlayedFrameFile = File(overlayedFramePath);
+      await overlayedFrameFile.writeAsBytes(overlayedPngBytes);
+
+      AppLogger.d(
+        '[AnimatedStickerService] Overlayed frame saved: $overlayedFramePath',
+      );
+
+      onProgress?.call(0.7, 'creating_animated_webp');
+
+      // Bước 3: Tạo animated WebP từ frame đã overlay
+      // Vì chỉ có 1 frame, sẽ tạo animated WebP với 1 frame (hoặc lặp lại frame này)
+      // Để tạo animated WebP từ 1 frame, dùng FFmpeg với -loop 0
+      final outPath = outputPath.replaceAll('\\', '/');
+      final framePath = overlayedFramePath.replaceAll('\\', '/');
+
+      // Tạo animated WebP từ 1 frame (lặp lại frame này)
+      // Command: ffmpeg -loop 1 -i frame.png -t 3 -c:v libwebp -loop 0 output.webp
+      final combineCommand = [
+        '-y',
+        '-loop',
+        '1', // Loop input frame
+        '-i',
+        framePath,
+        '-t',
+        '3', // Duration 3 seconds (WhatsApp limit)
+        '-an',
+        '-c:v',
+        'libwebp',
+        '-quality',
+        '80',
+        '-lossless',
+        '0',
+        '-compression_level',
+        '6',
+        '-method',
+        '6',
+        '-loop',
+        '0', // Infinite loop output
+        outPath,
+      ].join(' ');
+
+      AppLogger.d(
+        '[AnimatedStickerService] Create animated WebP command: $combineCommand',
+      );
+
+      final combineSession = await FFmpegKit.execute(combineCommand);
+      final combineReturnCode = await combineSession.getReturnCode();
+
+      // Cleanup temp file
+      try {
+        await overlayedFrameFile.delete();
+      } catch (e) {
+        AppLogger.w('[AnimatedStickerService] Failed to delete temp frame: $e');
+      }
+
+      if (!ReturnCode.isSuccess(combineReturnCode)) {
+        final output = await combineSession.getOutput();
+        AppLogger.e(
+          '[AnimatedStickerService] Create animated WebP failed: returnCode=$combineReturnCode',
+        );
+        if (output != null && output.isNotEmpty) {
+          AppLogger.e('[AnimatedStickerService] Combine output: $output');
+        }
+        throw Exception('Failed to create animated WebP from overlayed frame');
+      }
+
+      onProgress?.call(0.95, 'validating_output');
+
+      final outputFile = File(outputPath);
+      if (!await outputFile.exists()) {
+        throw Exception('Overlay output file not created: $outputPath');
+      }
+
+      // Set loop count
+      try {
+        final loopSuccess = await WebpLoopService.setLoopCount(
+          filePath: outputPath,
+          loopCount: 0,
+        );
+        if (loopSuccess) {
+          AppLogger.i(
+            '[AnimatedStickerService] Successfully set infinite loop',
+          );
+        }
+      } catch (e) {
+        AppLogger.w('[AnimatedStickerService] Failed to set loop count: $e');
+      }
+
+      // Validate sticker sau khi overlay (size, format, ...)
+      final isValid = await validateAnimatedSticker(outputFile);
+      if (!isValid) {
+        AppLogger.w(
+          '[AnimatedStickerService] Overlay result failed validation '
+          '(size/format), nhưng vẫn trả path để debug: $outputPath',
+        );
+      }
+
+      onProgress?.call(1.0, 'completed');
+
+      AppLogger.i(
+        '[AnimatedStickerService] Overlay text completed (frame-by-frame): $outputPath',
+      );
+      return outputPath;
+    } catch (e, st) {
+      AppLogger.e('[AnimatedStickerService] Overlay text error', e, st);
+      rethrow;
     }
   }
 

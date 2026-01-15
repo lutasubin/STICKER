@@ -283,10 +283,30 @@ class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
       },
       onEdit: () async {
         Get.back();
-        await Get.toNamed(
-          AppRoutes.editSticker,
-          arguments: {'pack': _pack, 'stickerUri': stickerUri},
-        );
+        // Kiểm tra nếu pack là animated → show dialog thông báo
+        // Vì FFmpeg trên Android không hỗ trợ edit trực tiếp WebP động
+        // User cần tạo lại từ video để thêm text
+        if (_pack.isAnimated) {
+          await Get.dialog(
+            AlertDialog(
+              title: Text('edit_animated_sticker_title'.tr),
+              content: Text(
+                'edit_animated_sticker_message'.tr,
+                style: const TextStyle(fontSize: 14),
+              ),
+              actions: [
+                TextButton(onPressed: () => Get.back(), child: Text('ok'.tr)),
+              ],
+            ),
+          );
+          return;
+        } else {
+          // Static sticker → navigate đến editSticker
+          await Get.toNamed(
+            AppRoutes.editSticker,
+            arguments: {'pack': _pack, 'stickerUri': stickerUri},
+          );
+        }
         if (!mounted) return;
         _reloadFromStorage();
       },

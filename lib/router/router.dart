@@ -11,6 +11,7 @@ import 'package:sticker_app/view/create_sticker/select_image_screen.dart';
 import 'package:sticker_app/view/create_sticker/select_video_screen.dart';
 import 'package:sticker_app/view/create_sticker/crop_video_screen.dart';
 import 'package:sticker_app/view/edit_sticker/edit_sticker_screen.dart';
+import 'package:sticker_app/view/edit_sticker/edit_animated_sticker_screen.dart';
 import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
 import 'package:sticker_app/view/my_sticker/my_sticker_screen.dart';
 import 'package:sticker_app/view/my_sticker/user_pack_detail_screen.dart';
@@ -31,6 +32,7 @@ class AppRoutes {
   static const createAnimatedSelectVideo = '/createAnimatedSelectVideo';
   static const createAnimatedCrop = '/createAnimatedCrop';
   static const editSticker = '/editSticker';
+  static const editAnimatedSticker = '/editAnimatedSticker';
   static const stickerPicker = '/stickerPicker';
 
   static final routes = [
@@ -110,6 +112,12 @@ class AppRoutes {
     GetPage(
       name: editSticker,
       page: () => const EditStickerScreen(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 250),
+    ),
+    GetPage(
+      name: editAnimatedSticker,
+      page: () => const EditAnimatedStickerScreen(),
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 250),
     ),
