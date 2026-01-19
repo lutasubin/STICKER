@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:sticker_app/service/sticker/video_cache_service.dart';
 import 'package:video_player/video_player.dart';
 
 /// Text editor tabs - giống sticker tĩnh - export để dùng chung
@@ -94,10 +95,14 @@ class AnimatedTextEditScreen extends StatefulWidget {
     required this.selectedTextId,
     required this.onTextItemsChanged,
     required this.onSelectedTextIdChanged,
+    this.startTime,
+    this.endTime,
   });
 
   final File videoFile;
   final List<AnimatedTextItem> textItems;
+  final double? startTime; // Start time trong giây (từ CropVideoScreen)
+  final double? endTime; // End time trong giây (từ CropVideoScreen)
   final String? selectedTextId;
   final Function(List<AnimatedTextItem>) onTextItemsChanged;
   final Function(String?) onSelectedTextIdChanged;
@@ -118,6 +123,10 @@ class _AnimatedTextEditScreenState extends State<AnimatedTextEditScreen> {
   bool _isDisposed = false;
   bool _isVideoPausedForGesture =
       false; // Track if video was paused for gesture
+
+  // Tối ưu: Throttle video listener để tránh lag
+  DateTime? _lastVideoListenerCall;
+  static const _videoListenerThrottleMs = 100; // Chỉ check mỗi 100ms
 
   // Fonts list - giống sticker tĩnh
   static const List<String> _fonts = [
@@ -158,23 +167,75 @@ class _AnimatedTextEditScreenState extends State<AnimatedTextEditScreen> {
 
   Future<void> _initVideoPlayer() async {
     try {
-      _videoController = VideoPlayerController.file(widget.videoFile);
-      await _videoController!.initialize();
-      _videoController!.setLooping(false);
-      _videoController!.play();
-      _videoController!.addListener(_videoListener);
-      if (mounted && !_isDisposed) {
-        setState(() {});
+      // Sử dụng VideoCacheService để lấy hoặc tạo controller
+      // Nếu đã có trong cache, sẽ reuse controller đã load sẵn
+      _videoController = await VideoCacheService().getOrCreateController(
+        videoPath: widget.videoFile.path,
+        startTime: widget.startTime,
+        endTime: widget.endTime,
+        onLoop: () {
+          // Callback khi video loop
+        },
+      );
+
+      if (_videoController != null) {
+        // Thêm listener để xử lý loop (nếu chưa có từ cache)
+        _videoController!.addListener(_videoListener);
+
+        // Seek đến startTime nếu có (từ CropVideoScreen)
+        if (widget.startTime != null && widget.startTime! > 0) {
+          await _videoController!.seekTo(
+            Duration(milliseconds: (widget.startTime! * 1000).toInt()),
+          );
+        }
+
+        await _videoController!.play();
+
+        if (mounted && !_isDisposed) {
+          setState(() {});
+        }
       }
     } catch (e) {
       debugPrint('Error initializing video player: $e');
+      // Nếu có lỗi, vẫn tiếp tục để UI hiển thị
+      if (mounted && !_isDisposed) {
+        setState(() {});
+      }
     }
   }
 
   void _videoListener() {
     if (_isDisposed || _videoController == null) return;
+
+    // Throttle: Chỉ xử lý mỗi 100ms để tránh lag
+    final now = DateTime.now();
+    if (_lastVideoListenerCall != null) {
+      final diff = now.difference(_lastVideoListenerCall!);
+      if (diff.inMilliseconds < _videoListenerThrottleMs) {
+        return; // Skip nếu chưa đủ 100ms
+      }
+    }
+    _lastVideoListenerCall = now;
+
     try {
       final value = _videoController!.value;
+
+      // Nếu có startTime và endTime (từ CropVideoScreen), loop trong khoảng này
+      if (widget.startTime != null &&
+          widget.endTime != null &&
+          value.isPlaying) {
+        final currentTime = value.position.inMilliseconds / 1000.0;
+        // Chỉ check khi gần đến endTime (trong vòng 200ms) để tránh check quá nhiều
+        if (currentTime >= widget.endTime! - 0.2) {
+          // Seek về startTime để loop
+          _videoController!.seekTo(
+            Duration(milliseconds: (widget.startTime! * 1000).toInt()),
+          );
+        }
+        return;
+      }
+
+      // Nếu không có startTime/endTime, xử lý như cũ (pause khi kết thúc)
       if (value.isPlaying &&
           value.position >= value.duration &&
           value.duration > Duration.zero) {
@@ -201,9 +262,20 @@ class _AnimatedTextEditScreenState extends State<AnimatedTextEditScreen> {
   @override
   void dispose() {
     _isDisposed = true;
-    _videoController?.removeListener(_videoListener);
-    _videoController?.pause();
-    _videoController?.dispose();
+
+    // Release video controller từ cache (không dispose trực tiếp)
+    if (_videoController != null) {
+      try {
+        _videoController!.removeListener(_videoListener);
+        _videoController!.pause();
+        // Release từ cache thay vì dispose trực tiếp
+        VideoCacheService().releaseController(widget.videoFile.path);
+      } catch (e) {
+        debugPrint('Error releasing video controller: $e');
+      }
+      _videoController = null;
+    }
+
     _textController.removeListener(_onTextChanged);
     _textController.dispose();
     _textFocusNode.dispose();

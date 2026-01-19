@@ -104,9 +104,29 @@ class AnimatedStickerService {
       // -method 6: encoding method (0-6, 6 = slowest but best compression)
       final videoFilter = _buildVideoFilter(cropMode, targetSize);
 
-      // Tối ưu: Quality 60 ngay từ đầu để đạt < 500KB cho animated sticker
-      // Video dài (5s) với quality cao sẽ rất nặng, nên dùng quality vừa phải
-      final initialQuality = 60;
+      // Tối ưu: Tính toán quality và FPS dựa trên duration để đảm bảo < 500KB
+      // Video dài hơn cần quality và FPS thấp hơn
+      int initialQuality;
+      int targetFps = fps;
+
+      if (duration <= 2.0) {
+        // Video ngắn (≤2s): Có thể dùng quality cao hơn
+        initialQuality = 70;
+        targetFps = 10;
+      } else if (duration <= 3.5) {
+        // Video trung bình (2-3.5s): Quality vừa phải
+        initialQuality = 60;
+        targetFps = 8;
+      } else {
+        // Video dài (3.5-5s): Quality và FPS thấp để đảm bảo < 500KB
+        initialQuality = 50;
+        targetFps = 6; // Giảm FPS để giảm số frames
+      }
+
+      AppLogger.i(
+        '[AnimatedStickerService] Duration: ${duration}s, '
+        'Quality: $initialQuality, FPS: $targetFps (tối ưu cho < 500KB)',
+      );
 
       // FFmpeg command để tạo animated WebP
       // Lưu ý: Một số build của FFmpeg có thể không hỗ trợ animated WebP trực tiếp
@@ -129,7 +149,7 @@ class AnimatedStickerService {
           '-i "${videoFile.path}" '
           '-t $duration '
           '-vf "$videoFilter" '
-          '-r $fps '
+          '-r $targetFps '
           '-an '
           '-f webp '
           '-c:v libwebp '
@@ -236,20 +256,34 @@ class AnimatedStickerService {
         '[AnimatedStickerService] Animated WebP size: ${(fileSize / 1024).toStringAsFixed(2)} KB',
       );
 
-      // If file is too large, try re-encoding with lower quality
+      // If file is too large, try re-encoding với quality và FPS thấp hơn
+      // Đảm bảo LUÔN giảm xuống < 500KB
       if (fileSize > 500 * 1024) {
         AppLogger.w(
           '[AnimatedStickerService] File too large (${(fileSize / 1024).toStringAsFixed(2)} KB), '
-          're-encoding with lower quality',
+          're-encoding with lower quality and FPS',
         );
 
-        // Re-encode with lower quality (skip progress update vì nhanh)
-        // Note: Khi re-encode từ WebP, không cần -vf và -r vì đã có sẵn
+        // Tính toán quality và FPS mới dựa trên file size hiện tại
+        int newQuality = 40;
+        int newFps = 6;
+
+        // Nếu file rất lớn (>800KB), giảm mạnh hơn
+        if (fileSize > 800 * 1024) {
+          newQuality = 30;
+          newFps = 5;
+        } else if (fileSize > 650 * 1024) {
+          newQuality = 35;
+          newFps = 5;
+        }
+
+        // Re-encode với quality và FPS thấp hơn
         final reencodeCommand =
             '-y '
             '-i "$outputPath" '
+            '-r $newFps '
             '-c:v libwebp '
-            '-quality 50 '
+            '-quality $newQuality '
             '-lossless 0 '
             '-compression_level 6 '
             '-method 6 '
@@ -261,64 +295,82 @@ class AnimatedStickerService {
         if (ReturnCode.isSuccess(reencodeReturnCode)) {
           final newFileSize = await outputFile.length();
           AppLogger.i(
-            '[AnimatedStickerService] Re-encoded size: ${(newFileSize / 1024).toStringAsFixed(2)} KB',
+            '[AnimatedStickerService] Re-encoded size: ${(newFileSize / 1024).toStringAsFixed(2)} KB '
+            '(quality: $newQuality, fps: $newFps)',
           );
 
-          // If still too large, try even lower quality
+          // Nếu vẫn quá lớn, giảm mạnh hơn nữa
           if (newFileSize > 500 * 1024) {
             AppLogger.w(
-              '[AnimatedStickerService] Still too large, trying quality 40',
+              '[AnimatedStickerService] Still too large, trying ultra low quality (25, fps: 4)',
             );
 
-            final finalCommand =
+            final ultraLowCommand =
                 '-y '
                 '-i "$outputPath" '
+                '-r 4 '
                 '-c:v libwebp '
-                '-quality 40 '
+                '-quality 25 '
                 '-lossless 0 '
                 '-compression_level 6 '
                 '-method 6 '
                 '"$outputPath"';
 
-            final finalSession = await FFmpegKit.execute(finalCommand);
-            final finalReturnCode = await finalSession.getReturnCode();
+            final ultraSession = await FFmpegKit.execute(ultraLowCommand);
+            final ultraReturnCode = await ultraSession.getReturnCode();
 
-            if (ReturnCode.isSuccess(finalReturnCode)) {
-              final finalFileSize = await outputFile.length();
+            if (ReturnCode.isSuccess(ultraReturnCode)) {
+              final ultraFileSize = await outputFile.length();
               AppLogger.i(
-                '[AnimatedStickerService] Final size: ${(finalFileSize / 1024).toStringAsFixed(2)} KB',
+                '[AnimatedStickerService] Ultra low quality size: ${(ultraFileSize / 1024).toStringAsFixed(2)} KB',
               );
 
-              // If STILL too large, try reducing FPS as last resort
-              if (finalFileSize > 500 * 1024) {
-                AppLogger.w(
-                  '[AnimatedStickerService] Still too large after 2 re-encodes, '
-                  'trying to reduce FPS to 6 and quality to 35',
+              // Nếu VẪN quá lớn (rất hiếm), cắt duration hoặc giảm quality xuống 20
+              if (ultraFileSize > 500 * 1024) {
+                AppLogger.e(
+                  '[AnimatedStickerService] File STILL too large after all optimizations! '
+                  'Trying minimum quality (20, fps: 3)',
                 );
 
-                final ultraLowCommand =
+                final minimumCommand =
                     '-y '
                     '-i "$outputPath" '
-                    '-r 6 '
+                    '-r 3 '
                     '-c:v libwebp '
-                    '-quality 35 '
+                    '-quality 20 '
                     '-lossless 0 '
                     '-compression_level 6 '
                     '-method 6 '
                     '"$outputPath"';
 
-                final ultraSession = await FFmpegKit.execute(ultraLowCommand);
-                final ultraReturnCode = await ultraSession.getReturnCode();
+                final minimumSession = await FFmpegKit.execute(minimumCommand);
+                final minimumReturnCode = await minimumSession.getReturnCode();
 
-                if (ReturnCode.isSuccess(ultraReturnCode)) {
-                  final ultraFileSize = await outputFile.length();
+                if (ReturnCode.isSuccess(minimumReturnCode)) {
+                  final minimumFileSize = await outputFile.length();
                   AppLogger.i(
-                    '[AnimatedStickerService] Ultra low quality size: ${(ultraFileSize / 1024).toStringAsFixed(2)} KB',
+                    '[AnimatedStickerService] Minimum quality size: ${(minimumFileSize / 1024).toStringAsFixed(2)} KB',
                   );
+
+                  if (minimumFileSize > 500 * 1024) {
+                    AppLogger.e(
+                      '[AnimatedStickerService] CRITICAL: File still > 500KB after all optimizations! '
+                      'Size: ${(minimumFileSize / 1024).toStringAsFixed(2)} KB',
+                    );
+                    throw Exception(
+                      'Không thể giảm file size xuống < 500KB. '
+                      'File size hiện tại: ${(minimumFileSize / 1024).toStringAsFixed(2)} KB. '
+                      'Vui lòng thử với video ngắn hơn hoặc đơn giản hơn.',
+                    );
+                  }
                 }
               }
             }
           }
+        } else {
+          AppLogger.e(
+            '[AnimatedStickerService] Re-encode failed, but continuing...',
+          );
         }
       }
 
@@ -448,8 +500,6 @@ class AnimatedStickerService {
 
       // Build filter complex: video filter + overlay text
       // [0:v] = video input, [1:v] = text PNG input
-      final filterComplex =
-          '[0:v]$videoFilter[v0];[v0][1:v]overlay=$xExpr:$yExpr';
 
       // Chuẩn hóa paths và quote để tránh lỗi với spaces
       final videoPath = videoFile.path.replaceAll('\\', '/');
@@ -740,19 +790,36 @@ class AnimatedStickerService {
       );
 
       // Re-encode nếu file quá lớn (tương tự processVideoToWebP)
+      // Đảm bảo LUÔN giảm xuống < 500KB
       if (fileSize > 500 * 1024) {
         AppLogger.w(
-          '[AnimatedStickerService] File too large, re-encoding with lower quality',
+          '[AnimatedStickerService] File too large (${(fileSize / 1024).toStringAsFixed(2)} KB), '
+          're-encoding with lower quality and FPS',
         );
+
+        // Tính toán quality và FPS mới dựa trên file size hiện tại
+        int newQuality = 40;
+        int newFps = 6;
+
+        // Nếu file rất lớn (>800KB), giảm mạnh hơn
+        if (fileSize > 800 * 1024) {
+          newQuality = 30;
+          newFps = 5;
+        } else if (fileSize > 650 * 1024) {
+          newQuality = 35;
+          newFps = 5;
+        }
 
         final reencodeCommand = [
           '-y',
           '-i',
           outPath,
+          '-r',
+          newFps.toString(),
           '-c:v',
           'libwebp',
           '-quality',
-          '50',
+          newQuality.toString(),
           '-lossless',
           '0',
           '-compression_level',
@@ -768,8 +835,91 @@ class AnimatedStickerService {
         if (ReturnCode.isSuccess(reencodeReturnCode)) {
           final newFileSize = await outputFile.length();
           AppLogger.i(
-            '[AnimatedStickerService] Re-encoded size: ${(newFileSize / 1024).toStringAsFixed(2)} KB',
+            '[AnimatedStickerService] Re-encoded size: ${(newFileSize / 1024).toStringAsFixed(2)} KB '
+            '(quality: $newQuality, fps: $newFps)',
           );
+
+          // Nếu vẫn quá lớn, giảm mạnh hơn nữa
+          if (newFileSize > 500 * 1024) {
+            AppLogger.w(
+              '[AnimatedStickerService] Still too large, trying ultra low quality (25, fps: 4)',
+            );
+
+            final ultraLowCommand = [
+              '-y',
+              '-i',
+              outPath,
+              '-r',
+              '4',
+              '-c:v',
+              'libwebp',
+              '-quality',
+              '25',
+              '-lossless',
+              '0',
+              '-compression_level',
+              '6',
+              '-method',
+              '6',
+              outPath,
+            ].join(' ');
+
+            final ultraSession = await FFmpegKit.execute(ultraLowCommand);
+            final ultraReturnCode = await ultraSession.getReturnCode();
+
+            if (ReturnCode.isSuccess(ultraReturnCode)) {
+              final ultraFileSize = await outputFile.length();
+              AppLogger.i(
+                '[AnimatedStickerService] Ultra low quality size: ${(ultraFileSize / 1024).toStringAsFixed(2)} KB',
+              );
+
+              // Nếu VẪN quá lớn, giảm xuống minimum
+              if (ultraFileSize > 500 * 1024) {
+                AppLogger.e(
+                  '[AnimatedStickerService] File STILL too large! Trying minimum quality (20, fps: 3)',
+                );
+
+                final minimumCommand = [
+                  '-y',
+                  '-i',
+                  outPath,
+                  '-r',
+                  '3',
+                  '-c:v',
+                  'libwebp',
+                  '-quality',
+                  '20',
+                  '-lossless',
+                  '0',
+                  '-compression_level',
+                  '6',
+                  '-method',
+                  '6',
+                  outPath,
+                ].join(' ');
+
+                final minimumSession = await FFmpegKit.execute(minimumCommand);
+                final minimumReturnCode = await minimumSession.getReturnCode();
+
+                if (ReturnCode.isSuccess(minimumReturnCode)) {
+                  final minimumFileSize = await outputFile.length();
+                  AppLogger.i(
+                    '[AnimatedStickerService] Minimum quality size: ${(minimumFileSize / 1024).toStringAsFixed(2)} KB',
+                  );
+
+                  if (minimumFileSize > 500 * 1024) {
+                    AppLogger.e(
+                      '[AnimatedStickerService] CRITICAL: File still > 500KB after all optimizations!',
+                    );
+                    throw Exception(
+                      'Không thể giảm file size xuống < 500KB. '
+                      'File size hiện tại: ${(minimumFileSize / 1024).toStringAsFixed(2)} KB.',
+                    );
+                  }
+                }
+              }
+            }
+          }
         }
       }
 

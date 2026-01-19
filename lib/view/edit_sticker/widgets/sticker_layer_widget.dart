@@ -106,29 +106,18 @@ class _TransformableStickerLayerState extends State<TransformableStickerLayer> {
 
       // Xử lý Scale (2 ngón tay - pinch zoom)
       if (hasScaleChange) {
-        final newScale = (_scaleStart! * scaleDelta).clamp(0.3, 3.0);
-
-        // Điều chỉnh position để scale từ center của sticker
-        final baseStickerSize = widget.canvasSize * _stickerSizeRatio;
-        final oldSize = baseStickerSize * _scaleStart!;
-        final newSize = baseStickerSize * newScale;
-        final sizeDelta = (newSize - oldSize) / 2;
-
-        _scale = newScale;
-        // Cập nhật position khi scale để giữ center
-        _position = Offset(
-          _panStart!.dx - sizeDelta,
-          _panStart!.dy - sizeDelta,
-        );
+        // Scale từ center - position (center) không thay đổi, chỉ scale thay đổi
+        _scale = (_scaleStart! * scaleDelta).clamp(0.3, 3.0);
       }
 
-      // Xử lý Pan (di chuyển) - sử dụng focalPoint thay vì focalPointDelta
+      // Xử lý Pan (di chuyển) - luôn xử lý để hỗ trợ vừa scale vừa pan
       // Convert từ display coordinates sang canvas coordinates
       final focalPointDelta = details.focalPoint - _focalPointStart!;
       final canvasDelta = Offset(
         focalPointDelta.dx / widget.displayScale,
         focalPointDelta.dy / widget.displayScale,
       );
+      // Cập nhật position (center) khi pan
       _position = Offset(
         _panStart!.dx + canvasDelta.dx,
         _panStart!.dy + canvasDelta.dy,
@@ -139,7 +128,7 @@ class _TransformableStickerLayerState extends State<TransformableStickerLayer> {
         _rotation = _rotationStart! + details.rotation;
       }
 
-      // Giới hạn position trong canvas
+      // Giới hạn position trong canvas (position là center)
       _clampPosition();
     });
 
@@ -171,9 +160,9 @@ class _TransformableStickerLayerState extends State<TransformableStickerLayer> {
 
   @override
   Widget build(BuildContext context) {
-    // Position được lưu trong canvas coordinates (512x512)
+    // Position được lưu trong canvas coordinates (512x512) - là CENTER của sticker
     // Cần scale lên display coordinates để hiển thị đúng
-    final displayPosition = Offset(
+    final displayCenter = Offset(
       _position.dx * widget.displayScale,
       _position.dy * widget.displayScale,
     );
@@ -185,9 +174,15 @@ class _TransformableStickerLayerState extends State<TransformableStickerLayer> {
     // Kích thước cuối cùng (sau khi áp dụng scale của user)
     final finalDisplaySize = displayBaseSize * _scale;
 
+    // Tính top-left từ center (để vẽ đúng vị trí)
+    final displayTopLeft = Offset(
+      displayCenter.dx - finalDisplaySize / 2,
+      displayCenter.dy - finalDisplaySize / 2,
+    );
+
     return Positioned(
-      left: displayPosition.dx,
-      top: displayPosition.dy,
+      left: displayTopLeft.dx,
+      top: displayTopLeft.dy,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => widget.onTap(widget.sticker.id),

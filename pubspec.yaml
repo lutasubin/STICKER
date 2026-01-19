@@ -55,6 +55,8 @@ dependencies:
   video_player: ^2.9.2
   video_thumbnail: ^0.5.3
   ffmpeg_kit_flutter_new: ^4.1.0
+
+  # google_mobile_ads: ^6.0.0
   
 
 dev_dependencies:

@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:sticker_app/service/sticker/sticker_edit_service.dart';
+import 'package:sticker_app/service/sticker/video_cache_service.dart';
 import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
+import 'package:video_player/video_player.dart';
 
 /// Màn hình chọn sticker (tách riêng như trong ảnh)
 class StickerPickerScreen extends StatefulWidget {
@@ -25,29 +27,98 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
   String? _selectedStickerLayerId;
   static const double _canvasSize = 512.0;
 
-  // Background image (sticker gốc)
+  // Background image (sticker gốc) hoặc video player
   File? _backgroundImage;
+  VideoPlayerController? _videoController; // Video player với loop
   bool _isLoadingBackground = true;
+  bool _isDisposed = false;
+
+  // Video info từ arguments
+  String? _videoPath;
+  double? _startTime;
+  double? _endTime;
 
   @override
   void initState() {
     super.initState();
-    _loadBackgroundImage();
+    _loadBackground();
     _loadStickers();
   }
 
-  /// Load background image từ arguments
-  Future<void> _loadBackgroundImage() async {
+  @override
+  void dispose() {
+    _isDisposed = true;
+
+    // Release video controller từ cache
+    if (_videoController != null && _videoPath != null) {
+      try {
+        _videoController!.removeListener(_videoListener);
+        _videoController!.pause();
+        VideoCacheService().releaseController(_videoPath!);
+      } catch (e) {
+        debugPrint('Error releasing video controller: $e');
+      }
+      _videoController = null;
+    }
+
+    super.dispose();
+  }
+
+  void _videoListener() {
+    if (_isDisposed || _videoController == null) return;
+    // Listener được xử lý bởi VideoCacheService
+  }
+
+  /// Load background image hoặc video player từ arguments
+  Future<void> _loadBackground() async {
     try {
       final args = Get.arguments as Map<String, dynamic>?;
-      if (args != null && args['stickerUri'] != null) {
-        final stickerUri = args['stickerUri'] as String;
-        _backgroundImage = File.fromUri(Uri.parse(stickerUri));
+      if (args != null) {
+        // Ưu tiên video file nếu có (cho animated sticker)
+        // Dùng VideoCacheService để reuse video controller đã load
+        if (args['videoFile'] != null) {
+          _videoPath = args['videoFile'] as String;
+          _startTime = args['startTime'] as double?;
+          _endTime = args['endTime'] as double?;
+
+          final videoFile = File(_videoPath!);
+          if (videoFile.existsSync()) {
+            // Sử dụng VideoCacheService để lấy hoặc tạo controller
+            _videoController = await VideoCacheService().getOrCreateController(
+              videoPath: _videoPath!,
+              startTime: _startTime,
+              endTime: _endTime,
+              onLoop: () {
+                // Callback khi video loop
+              },
+            );
+
+            if (_videoController != null && mounted && !_isDisposed) {
+              _videoController!.addListener(_videoListener);
+
+              // Seek đến startTime nếu có
+              if (_startTime != null && _startTime! > 0) {
+                await _videoController!.seekTo(
+                  Duration(milliseconds: (_startTime! * 1000).toInt()),
+                );
+              }
+
+              // Play video với loop
+              await _videoController!.play();
+            }
+          } else {
+            debugPrint('Video file does not exist: $_videoPath');
+          }
+        } else if (args['stickerUri'] != null) {
+          // Load sticker image (cho static sticker)
+          final stickerUri = args['stickerUri'] as String;
+          _backgroundImage = File.fromUri(Uri.parse(stickerUri));
+        }
       }
     } catch (e) {
-      debugPrint('Error loading background image: $e');
+      debugPrint('Error loading background: $e');
     } finally {
-      if (mounted) {
+      if (mounted && !_isDisposed) {
         setState(() => _isLoadingBackground = false);
       }
     }
@@ -237,7 +308,7 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
                               ),
                               size: Size(displaySize, displaySize),
                             ),
-                            // Background image (sticker gốc) - hiển thị với kích thước canvas
+                            // Background image hoặc video player (sticker gốc) - hiển thị với kích thước canvas
                             if (_isLoadingBackground)
                               const Center(
                                 child: CircularProgressIndicator(
@@ -246,7 +317,21 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
                                   ),
                                 ),
                               )
+                            else if (_videoController != null &&
+                                _videoController!.value.isInitialized &&
+                                !_videoController!.value.hasError)
+                              // Hiển thị video player với loop
+                              Positioned.fill(
+                                child: Center(
+                                  child: AspectRatio(
+                                    aspectRatio:
+                                        _videoController!.value.aspectRatio,
+                                    child: VideoPlayer(_videoController!),
+                                  ),
+                                ),
+                              )
                             else if (_backgroundImage != null)
+                              // Hiển thị image nếu có
                               Positioned.fill(
                                 child: Image.file(
                                   _backgroundImage!,

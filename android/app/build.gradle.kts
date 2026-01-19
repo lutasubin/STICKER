@@ -36,8 +36,8 @@ android {
         applicationId = "com.mobileai.stickerapp"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0"
+        versionCode = 15
+        versionName = "6.0"
     }
 
      signingConfigs {

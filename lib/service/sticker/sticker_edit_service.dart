@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -42,14 +40,14 @@ class StickerEditService {
     }
 
     try {
-      final manifestContent = await rootBundle.loadString('AssetManifest.json');
-      final Map<String, dynamic> manifestMap =
-          const JsonDecoder().convert(manifestContent) as Map<String, dynamic>;
+      // Sử dụng AssetManifest.loadFromAssetBundle (API đúng cho Flutter 3.19+)
+      final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final List<String> allAssets = assetManifest.listAssets();
 
       // Lọc các asset thuộc category này
       final categoryPath = category.assetPath;
       final stickers =
-          manifestMap.keys
+          allAssets
               .where(
                 (key) => key.startsWith(categoryPath) && key.endsWith('.webp'),
               )
@@ -91,16 +89,17 @@ class StickerEditService {
     }
 
     try {
-      final manifestContent = await rootBundle.loadString('AssetManifest.json');
-      final Map<String, dynamic> manifestMap =
-          const JsonDecoder().convert(manifestContent) as Map<String, dynamic>;
+      // Sử dụng AssetManifest.loadFromAssetBundle (API đúng cho Flutter 3.19+)
+      final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
+      final List<String> allAssets = assetManifest.listAssets();
 
       // Lọc các asset trong folder background
       const backgroundPath = 'assets/sticker_edit/background/';
       final backgrounds =
-          manifestMap.keys
+          allAssets
               .where(
-                (key) => key.startsWith(backgroundPath) && key.endsWith('.webp'),
+                (key) =>
+                    key.startsWith(backgroundPath) && key.endsWith('.webp'),
               )
               .toList()
             ..sort((a, b) {

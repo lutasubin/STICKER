@@ -3,7 +3,7 @@
 ## 📋 Thông tin dự án
 
 Đây là ứng dụng Flutter Sticker Maker cho WhatsApp với:
-- **Framework**: Flutter SDK ^3.29.3
+- **Framework**: Flutter SDK ^3.38.7
 - **State Management**: GetX (^4.7.3)
 - **Storage**: GetStorage (^2.1.1)
 - **AI**: TensorFlow Lite (background removal với u2netp_320.tflite)
@@ -306,7 +306,7 @@ App yêu cầu permissions (xử lý bằng `permission_handler`):
 6. **KHÔNG BAO GIỜ** bypass validation của WhatsApp
 7. **KHÔNG BAO GIỜ** dùng setState() - chỉ dùng GetX reactive
 8. **KHÔNG BAO GIỜ** hardcode strings - dùng translation service
-9. **LUÔN** kiểm tra version compatibility khi thêm thư viện mới (phải phù hợp với Flutter SDK ^^3.29.3)
+9. **LUÔN** kiểm tra version compatibility khi thêm thư viện mới (phải phù hợp với Flutter SDK ^^3.38.7)
 10. **LUÔN** viết code rõ ràng, dễ mở rộng và maintain
 11. **LUÔN** trả lời bằng tiếng Việt khi giao tiếp với người dùng
 

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:sticker_app/controller/animated_sticker/animated_sticker_controller.dart';
 import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
@@ -762,8 +763,7 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
             children: [
               Expanded(
                 child: _buildCropModeButton(
-                  icon:
-                      Icons.not_interested, // vòng tròn có gạch chéo như design
+                  iconAsset: 'assets/icons/không.svg',
                   label: 'Không có',
                   mode: CropShapeMode.manual,
                 ),
@@ -771,7 +771,7 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildCropModeButton(
-                  icon: Icons.square_outlined,
+                  iconAsset: 'assets/icons/vuong.svg',
                   label: 'Hình vuông',
                   mode: CropShapeMode.square,
                 ),
@@ -779,7 +779,7 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: _buildCropModeButton(
-                  icon: Icons.circle_outlined,
+                  iconAsset: 'assets/icons/tròn.svg',
                   label: 'Hình tròn',
                   mode: CropShapeMode.circle,
                 ),
@@ -792,7 +792,7 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
   }
 
   Widget _buildCropModeButton({
-    required IconData icon,
+    required String iconAsset,
     required String label,
     required CropShapeMode mode,
   }) {
@@ -804,24 +804,18 @@ class _CropVideoScreenState extends State<CropVideoScreen> {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color:
-              isSelected
-                  ? const Color(0xFF00C979).withOpacity(0.1)
-                  : Colors.grey[100],
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? const Color(0xFF00C979) : Colors.grey[300]!,
-            width: 2,
-          ),
-        ),
+
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 40,
-              color: isSelected ? const Color(0xFF00C979) : Colors.grey[600],
+            SvgPicture.asset(
+              iconAsset,
+              width: 40,
+              height: 40,
+              colorFilter: ColorFilter.mode(
+                isSelected ? const Color(0xFF00C979) : Colors.grey[600]!,
+                BlendMode.srcIn,
+              ),
             ),
             const SizedBox(height: 6),
             Text(

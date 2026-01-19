@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sticker_app/controller/animated_sticker/animated_sticker_controller.dart'
@@ -10,7 +12,11 @@ import 'package:sticker_app/controller/animated_sticker/animated_sticker_control
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
 import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
+import 'package:sticker_app/service/sticker/video_cache_service.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:sticker_app/view/edit_sticker/animated_text_edit_screen.dart';
+import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
+import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
 import 'package:video_player/video_player.dart';
 
 /// Model cho mỗi text item - dùng AnimatedTextItem từ animated_text_edit_screen.dart
@@ -96,12 +102,21 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
 
   // Preview state
   bool _isInitialized = false;
+  bool _isVideoReady = false; // Flag để track video đã sẵn sàng chưa
   bool _isProcessing = false;
   VideoPlayerController? _videoController;
   bool _isDisposed = false; // Flag để track dispose state
 
+  // Tối ưu: Throttle video listener để tránh lag
+  DateTime? _lastVideoListenerCall;
+  static const _videoListenerThrottleMs = 100; // Chỉ check mỗi 100ms
+
   // UI state
   final bool _showTextEditor = false;
+
+  // Sticker layers state - tương tự text items
+  final List<StickerLayer> _stickerLayers = [];
+  String? _selectedStickerLayerId; // ID của sticker layer đang được chọn
 
   // Track controller ownership để tránh delete controller dùng chung
   bool _ownsAnimatedController = false;
@@ -114,15 +129,38 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
   }
 
   /// Video listener để xử lý khi video kết thúc hoặc có lỗi
-  /// Tối ưu: Chỉ xử lý khi video thực sự kết thúc, không xử lý mỗi frame
+  /// Tối ưu: Throttle để chỉ check mỗi 100ms, không check mỗi frame
   void _videoListener() {
     if (_isDisposed || _videoController == null) return;
+
+    // Throttle: Chỉ xử lý mỗi 100ms để tránh lag
+    final now = DateTime.now();
+    if (_lastVideoListenerCall != null) {
+      final diff = now.difference(_lastVideoListenerCall!);
+      if (diff.inMilliseconds < _videoListenerThrottleMs) {
+        return; // Skip nếu chưa đủ 100ms
+      }
+    }
+    _lastVideoListenerCall = now;
 
     try {
       final value = _videoController!.value;
 
-      // Chỉ xử lý khi video đã kết thúc và đang playing
-      // Tránh xử lý mỗi frame để giảm memory usage
+      // Nếu có startTime và endTime (từ CropVideoScreen), loop trong khoảng này
+      if (_startTime != null && _endTime != null && value.isPlaying) {
+        final currentTime = value.position.inMilliseconds / 1000.0;
+        // Chỉ check khi gần đến endTime (trong vòng 200ms) để tránh check quá nhiều
+        if (currentTime >= _endTime! - 0.2) {
+          // Seek về startTime để loop
+          _videoController!.seekTo(
+            Duration(milliseconds: (_startTime! * 1000).toInt()),
+          );
+        }
+        return;
+      }
+
+      // Nếu không có startTime/endTime, xử lý như cũ (pause khi kết thúc)
+      // Chỉ xử lý khi video đã kết thúc hoàn toàn
       if (value.isPlaying &&
           value.position >= value.duration &&
           value.duration > Duration.zero) {
@@ -161,26 +199,29 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
   }
 
   /// Listener cho TextEditingController - update text real-time mà không làm mất focus
+  /// Tối ưu: Debounce setState để tránh rebuild quá nhiều
   void _onTextChanged() {
     final newText = _textController.text;
     final selectedItem = _selectedTextItem;
 
     if (selectedItem != null && selectedItem.text != newText) {
-      // Update text của item đang được chọn ngay lập tức
+      // Update text của item ngay lập tức (không debounce cho text item)
       final index = _textItems.indexWhere((item) => item.id == selectedItem.id);
       if (index != -1) {
-        // Cập nhật text item ngay lập tức để overlay cập nhật real-time
         _textItems[index] = selectedItem.copyWith(text: newText);
+      }
 
-        // Cập nhật ValueNotifier ngay lập tức (không debounce) để text overlay cập nhật real-time
+      // Debounce setState để tránh rebuild quá nhiều (giảm lag)
+      _textUpdateTimer?.cancel();
+      _textUpdateTimer = Timer(const Duration(milliseconds: 50), () {
         if (mounted && !_isDisposed) {
           _textNotifier.value = newText;
-          // Trigger setState để rebuild overlay
+          // Trigger setState để rebuild overlay (debounced)
           setState(() {
             // Chỉ cần setState để rebuild, text đã được update ở trên
           });
         }
-      }
+      });
     }
   }
 
@@ -236,6 +277,140 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
     });
   }
 
+  /// Mở màn hình chọn sticker
+  Future<void> _openStickerPicker() async {
+    // Chỉ pause video, không dispose để có thể resume khi back về
+    // VideoCacheService sẽ quản lý controller, không cần dispose
+    bool wasPlaying = false;
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      wasPlaying = _videoController!.value.isPlaying;
+      // Chỉ pause, không dispose
+      try {
+        await _videoController!.pause();
+      } catch (e) {
+        debugPrint('Error pausing video controller before opening picker: $e');
+      }
+    }
+
+    // Tạo arguments để truyền vào StickerPickerScreen
+    Map<String, dynamic>? arguments;
+    if (_videoFile != null) {
+      // Nếu có video, truyền videoFile path và startTime/endTime để StickerPickerScreen hiển thị thumbnail
+      arguments = {
+        'videoFile': _videoFile!.path,
+        'startTime': _startTime,
+        'endTime': _endTime,
+      };
+    } else if (_stickerFile != null) {
+      // Nếu có sticker file, truyền stickerUri
+      arguments = {'stickerUri': _stickerFile!.uri.toString()};
+    }
+
+    // Navigate đến màn hình chọn sticker
+    final result = await Get.to<dynamic>(
+      () => const StickerPickerScreen(),
+      arguments: arguments,
+      transition: Transition.rightToLeft,
+      duration: const Duration(milliseconds: 250),
+    );
+
+    // Resume video khi back về (nếu đang chạy trước đó)
+    // Kiểm tra và lấy lại controller từ cache nếu cần
+    if (_videoFile != null && mounted && !_isDisposed) {
+      try {
+        // Kiểm tra controller hiện tại có còn valid không
+        bool needReinit = false;
+        if (_videoController == null ||
+            !_videoController!.value.isInitialized ||
+            _videoController!.value.hasError) {
+          needReinit = true;
+        }
+
+        if (needReinit) {
+          // Lấy lại controller từ cache
+          _videoController = await VideoCacheService().getOrCreateController(
+            videoPath: _videoFile!.path,
+            startTime: _startTime,
+            endTime: _endTime,
+            onLoop: () {
+              // Callback khi video loop
+            },
+          );
+        }
+
+        if (_videoController != null &&
+            _videoController!.value.isInitialized &&
+            !_videoController!.value.hasError &&
+            mounted &&
+            !_isDisposed) {
+          // Đảm bảo listener vẫn còn
+          _videoController!.addListener(_videoListener);
+
+          // Resume play nếu đang chạy trước đó
+          if (wasPlaying && !_videoController!.value.isPlaying) {
+            await _videoController!.play();
+          }
+
+          // Update UI nếu cần
+          if (mounted && !_isDisposed) {
+            _safeSetState(() {
+              _isVideoReady = true;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Error resuming video controller: $e');
+        // Nếu có lỗi, vẫn tiếp tục với controller hiện tại nếu có
+      }
+    }
+
+    // Nếu có sticker layers được chọn (đã transform), thêm vào canvas
+    if (result != null && mounted) {
+      setState(() {
+        // result có thể là List<StickerLayer>
+        if (result is List<StickerLayer>) {
+          // Thêm tất cả sticker layers vào
+          _stickerLayers.addAll(result);
+          if (result.isNotEmpty) {
+            _selectedStickerLayerId = result.last.id;
+          }
+        } else if (result is StickerLayer) {
+          // Nếu là single layer (backward compatibility), thêm vào như cũ
+          _stickerLayers.add(result);
+          _selectedStickerLayerId = result.id;
+        }
+      });
+    }
+  }
+
+  /// Cập nhật transform của sticker layer
+  void _onStickerLayerTransform(StickerLayer updatedLayer) {
+    setState(() {
+      final index = _stickerLayers.indexWhere((l) => l.id == updatedLayer.id);
+      if (index != -1) {
+        _stickerLayers[index] = updatedLayer;
+      }
+    });
+  }
+
+  /// Xóa sticker layer
+  void _onStickerLayerDelete(String layerId) {
+    setState(() {
+      _stickerLayers.removeWhere((l) => l.id == layerId);
+      if (_selectedStickerLayerId == layerId) {
+        _selectedStickerLayerId =
+            _stickerLayers.isNotEmpty ? _stickerLayers.last.id : null;
+      }
+    });
+  }
+
+  /// Chọn sticker layer
+  void _onStickerLayerTap(String layerId) {
+    setState(() {
+      _selectedStickerLayerId = layerId;
+    });
+  }
+
   void _initFromArguments() {
     try {
       final args = Get.arguments;
@@ -286,7 +461,13 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
         );
       }
 
-      // Gọi _initVideoPlayer async nhưng không block
+      // Set _isInitialized = true ngay để hiển thị UI ngay lập tức
+      // Video sẽ load ở background, không block UI
+      _safeSetState(() {
+        _isInitialized = true;
+      });
+
+      // Gọi _initVideoPlayer async ở background, không block UI
       _initVideoPlayer().catchError((e) {
         debugPrint('_initVideoPlayer error in initState: $e');
       });
@@ -330,44 +511,53 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
         // Check lại sau khi dispose
         if (!mounted || _isDisposed) return;
 
-        // Initialize video player nếu có video file
-        _videoController = VideoPlayerController.file(_videoFile!);
+        // Sử dụng VideoCacheService để lấy hoặc tạo controller
+        // Nếu đã có trong cache, sẽ reuse controller đã load sẵn
+        _videoController = await VideoCacheService().getOrCreateController(
+          videoPath: _videoFile!.path,
+          startTime: _startTime,
+          endTime: _endTime,
+          onLoop: () {
+            // Callback khi video loop (có thể dùng để update UI nếu cần)
+          },
+        );
 
-        // Initialize video
-        await _videoController!.initialize();
-
-        // Check mounted và dispose state sau mỗi async operation
+        // Check mounted và dispose state sau async operation
         if (!mounted || _isDisposed) {
-          await _videoController?.dispose();
-          _videoController = null;
+          if (_videoController != null) {
+            VideoCacheService().releaseController(_videoFile!.path);
+            _videoController = null;
+          }
           return;
         }
 
-        // Setup video - KHÔNG loop để tránh memory leak
-        // Loop sẽ gây OutOfMemoryError khi video chạy nhiều lần
-        _videoController!.setLooping(false);
+        // Thêm listener để xử lý loop (nếu chưa có từ cache)
+        if (_videoController != null) {
+          _videoController!.addListener(_videoListener);
 
-        // Thêm listener để xử lý khi video kết thúc
-        // Lưu ý: Listener sẽ được remove trong dispose
-        _videoController!.addListener(_videoListener);
+          // Seek đến startTime nếu có (từ CropVideoScreen)
+          if (_startTime != null && _startTime! > 0) {
+            await _videoController!.seekTo(
+              Duration(milliseconds: (_startTime! * 1000).toInt()),
+            );
+          }
 
-        // Check lại trước khi play
-        if (!mounted || _isDisposed) {
-          _videoController?.removeListener(_videoListener);
-          await _videoController?.dispose();
-          _videoController = null;
-          return;
+          // Play video
+          await _videoController!.play();
+
+          // Đánh dấu video đã sẵn sàng
+          if (mounted && !_isDisposed) {
+            _safeSetState(() {
+              _isVideoReady = true;
+            });
+          }
         }
-
-        // Play video một lần, không loop
-        // Listener sẽ tự động pause khi video kết thúc
-        await _videoController!.play();
+      } else {
+        // Nếu không có video file, vẫn đánh dấu là initialized
+        _safeSetState(() {
+          _isVideoReady = true;
+        });
       }
-
-      // Check mounted và dispose state trước khi setState
-      _safeSetState(() {
-        _isInitialized = true;
-      });
     } catch (e, st) {
       debugPrint('_initVideoPlayer error: $e');
       debugPrint(st.toString());
@@ -438,50 +628,45 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
 
   /// Dispose video controller an toàn (sync version)
   void _disposeVideoControllerSync() {
-    if (_videoController == null) return;
+    if (_videoController == null || _videoFile == null) return;
 
     final controller = _videoController;
+    final videoPath = _videoFile!.path;
     _videoController = null; // Set null ngay để tránh race condition
 
-    // Fire-and-forget async dispose
+    // Fire-and-forget async release từ cache
     Future.microtask(() async {
       try {
         // Remove listener trước
         if (controller != null) {
           try {
             controller.removeListener(_videoListener);
+            await controller.pause();
           } catch (e) {
             debugPrint('Error removing video listener: $e');
           }
-        }
 
-        // Pause trước nếu đã initialized
-        if (controller != null && controller.value.isInitialized) {
-          try {
-            await controller.pause();
-          } catch (e) {
-            debugPrint('Error pausing video controller in dispose: $e');
-          }
+          // Release từ cache thay vì dispose trực tiếp
+          VideoCacheService().releaseController(videoPath);
         }
       } catch (e) {
-        debugPrint('Error in pause step of dispose: $e');
-      }
-
-      try {
-        // Dispose controller
-        if (controller != null) {
-          await controller.dispose();
-        }
-      } catch (e) {
-        debugPrint('Error disposing video controller: $e');
+        debugPrint('Error in _disposeVideoControllerSync: $e');
       }
     });
   }
 
-  /// Render tất cả text items thành PNG trong suốt
+  /// Render tất cả text items và sticker layers thành PNG trong suốt
   Future<File?> _renderTextToPng() async {
-    if (_textItems.isEmpty) {
-      return null; // Không có text thì return null, không báo lỗi
+    // Nếu không có text và không có sticker layers thì return null
+    if (_textItems.isEmpty && _stickerLayers.isEmpty) {
+      return null;
+    }
+
+    // Nếu có text items nhưng tất cả đều rỗng và không có sticker layers thì return null
+    if (_textItems.isNotEmpty &&
+        !_textItems.any((item) => item.text.isNotEmpty) &&
+        _stickerLayers.isEmpty) {
+      return null;
     }
 
     try {
@@ -490,7 +675,51 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder);
 
-      // Vẽ tất cả text items
+      // Vẽ tất cả sticker layers trước (ở dưới text)
+      for (final stickerLayer in _stickerLayers) {
+        try {
+          // Load image từ asset bằng rootBundle
+          final ByteData data = await rootBundle.load(stickerLayer.imagePath);
+          final Uint8List bytes = data.buffer.asUint8List();
+          final codec = await ui.instantiateImageCodec(bytes);
+          final frame = await codec.getNextFrame();
+          final image = frame.image;
+
+          // Tính toán kích thước sticker sau khi scale
+          // TẤT CẢ TÍNH TOÁN ĐỀU DÙNG CANVAS COORDINATES (512x512)
+          const stickerSizeRatio = 0.3;
+          final baseStickerSize = 512.0 * stickerSizeRatio;
+          final stickerSize = baseStickerSize * stickerLayer.scale;
+
+          // Position được lưu trong canvas coordinates (512x512) - center của sticker
+          // Vẽ sticker với rotation
+          canvas.save();
+          // Translate về center của sticker
+          canvas.translate(stickerLayer.position.dx, stickerLayer.position.dy);
+          // Rotate quanh center
+          canvas.rotate(stickerLayer.rotation);
+          // Translate về lại để vẽ từ top-left
+          canvas.translate(-stickerSize / 2, -stickerSize / 2);
+
+          // Vẽ image
+          final srcRect = Rect.fromLTWH(
+            0,
+            0,
+            image.width.toDouble(),
+            image.height.toDouble(),
+          );
+          final dstRect = Rect.fromLTWH(0, 0, stickerSize, stickerSize);
+
+          canvas.drawImageRect(image, srcRect, dstRect, Paint());
+
+          canvas.restore();
+        } catch (e) {
+          debugPrint('Error rendering sticker layer ${stickerLayer.id}: $e');
+          // Tiếp tục với sticker layer tiếp theo nếu có lỗi
+        }
+      }
+
+      // Vẽ tất cả text items (ở trên sticker layers)
       for (final item in _textItems) {
         if (item.text.isEmpty) continue;
 
@@ -683,13 +912,16 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
       String? result;
       File? textPngFile;
 
-      // 1. Render text thành PNG nếu có text items
-      if (_textItems.isNotEmpty &&
-          _textItems.any((item) => item.text.isNotEmpty)) {
+      // 1. Render text và sticker layers thành PNG nếu có
+      if ((_textItems.isNotEmpty &&
+              _textItems.any((item) => item.text.isNotEmpty)) ||
+          _stickerLayers.isNotEmpty) {
         textPngFile = await _renderTextToPng();
-        // Nếu render text fail, vẫn tiếp tục tạo sticker không có text
+        // Nếu render fail, vẫn tiếp tục tạo sticker không có overlay
         if (textPngFile == null) {
-          debugPrint('Failed to render text, continuing without text overlay');
+          debugPrint(
+            'Failed to render text/stickers, continuing without overlay',
+          );
         }
       }
 
@@ -701,15 +933,30 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
           _endTime != null &&
           _cropMode != null) {
         // Flow 1: Từ CropVideoScreen
-        if (textPngFile != null && _textItems.isNotEmpty) {
-          // Có text: overlay text lên VIDEO rồi convert sang WebP
+        if (textPngFile != null &&
+            ((_textItems.isNotEmpty &&
+                    _textItems.any((item) => item.text.isNotEmpty)) ||
+                _stickerLayers.isNotEmpty)) {
+          // Có text/stickers: overlay lên VIDEO rồi convert sang WebP
           String position = 'center';
-          // Dùng vị trí của text đầu tiên để xác định position
-          final firstText = _textItems.first;
-          if (firstText.position.dy < 100) {
-            position = 'top';
-          } else if (firstText.position.dy > 400) {
-            position = 'bottom';
+          // Dùng vị trí của text đầu tiên hoặc sticker đầu tiên để xác định position
+          if (_textItems.isNotEmpty &&
+              _textItems.any((item) => item.text.isNotEmpty)) {
+            final firstText = _textItems.firstWhere(
+              (item) => item.text.isNotEmpty,
+            );
+            if (firstText.position.dy < 100) {
+              position = 'top';
+            } else if (firstText.position.dy > 400) {
+              position = 'bottom';
+            }
+          } else if (_stickerLayers.isNotEmpty) {
+            final firstSticker = _stickerLayers.first;
+            if (firstSticker.position.dy < 100) {
+              position = 'top';
+            } else if (firstSticker.position.dy > 400) {
+              position = 'bottom';
+            }
           }
 
           result = await controller.processVideoToAnimatedStickerWithOverlay(
@@ -733,15 +980,30 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
         }
       } else if (_stickerFile != null) {
         // Flow 2: Từ UserPackDetailScreen
-        if (textPngFile != null && _textItems.isNotEmpty) {
-          // Có text: overlay text lên WebP
+        if (textPngFile != null &&
+            ((_textItems.isNotEmpty &&
+                    _textItems.any((item) => item.text.isNotEmpty)) ||
+                _stickerLayers.isNotEmpty)) {
+          // Có text/stickers: overlay lên WebP
           String position = 'center';
-          // Dùng vị trí của text đầu tiên để xác định position
-          final firstText = _textItems.first;
-          if (firstText.position.dy < 100) {
-            position = 'top';
-          } else if (firstText.position.dy > 400) {
-            position = 'bottom';
+          // Dùng vị trí của text đầu tiên hoặc sticker đầu tiên để xác định position
+          if (_textItems.isNotEmpty &&
+              _textItems.any((item) => item.text.isNotEmpty)) {
+            final firstText = _textItems.firstWhere(
+              (item) => item.text.isNotEmpty,
+            );
+            if (firstText.position.dy < 100) {
+              position = 'top';
+            } else if (firstText.position.dy > 400) {
+              position = 'bottom';
+            }
+          } else if (_stickerLayers.isNotEmpty) {
+            final firstSticker = _stickerLayers.first;
+            if (firstSticker.position.dy < 100) {
+              position = 'top';
+            } else if (firstSticker.position.dy > 400) {
+              position = 'bottom';
+            }
           }
 
           result = await controller.overlayTextOnAnimatedSticker(
@@ -902,6 +1164,25 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
             // Text overlays (draggable, scalable) - render tất cả text items
             ..._textItems.map((item) => _buildTextOverlay(item)),
 
+            // Sticker layers overlay - render tất cả sticker layers
+            if (_stickerLayers.isNotEmpty)
+              Center(
+                child: SizedBox(
+                  width: 512,
+                  height: 512,
+                  child: StickerLayersWidget(
+                    layers: _stickerLayers,
+                    canvasSize: 512.0,
+                    displayScale: 1.0, // Không cần scale vì đã là 512x512
+                    selectedLayerId: _selectedStickerLayerId,
+                    onLayerTransform: _onStickerLayerTransform,
+                    onLayerDelete: _onStickerLayerDelete,
+                    onLayerTap: _onStickerLayerTap,
+                    isEditable: true,
+                  ),
+                ),
+              ),
+
             // Text editor panel
             if (_showTextEditor) _buildTextEditor(),
 
@@ -956,11 +1237,21 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
                 children: [
                   // Background trắng (không có checkered pattern)
                   Positioned.fill(child: Container(color: Colors.white)),
-                  // Video preview nếu có video file
+                  // Loading indicator khi video chưa sẵn sàng
+                  if (_videoFile != null && !_isVideoReady)
+                    const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF00C979),
+                        ),
+                      ),
+                    ),
+                  // Video preview nếu có video file và đã sẵn sàng
                   if (_videoController != null &&
                       !_isDisposed &&
                       _videoController!.value.isInitialized &&
-                      !_videoController!.value.hasError)
+                      !_videoController!.value.hasError &&
+                      _isVideoReady)
                     Center(
                       child: Container(
                         width: 512,
@@ -1265,107 +1556,154 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
   }
 
   Widget _buildBottomBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey[300]!, width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          // Text button - Navigate đến màn hình edit text riêng
-          Expanded(
-            child: InkWell(
-              onTap: () async {
-                // Navigate đến màn hình edit text riêng - giống sticker tĩnh
-                await Get.to(
-                  () => AnimatedTextEditScreen(
-                    videoFile: _videoFile!,
-                    textItems: _textItems,
-                    selectedTextId: _selectedTextId,
-                    onTextItemsChanged: (items) {
-                      setState(() {
-                        _textItems = items;
-                      });
-                    },
-                    onSelectedTextIdChanged: (id) {
-                      setState(() {
-                        _selectedTextId = id;
-                        if (id != null) {
-                          final item = _textItems.firstWhere((i) => i.id == id);
-                          _textController.text = item.text;
-                        } else {
-                          _textController.text = '';
-                        }
-                      });
-                    },
-                  ),
-                  transition: Transition.rightToLeft,
-                  duration: const Duration(milliseconds: 200),
-                );
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.text_fields,
-                    color:
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: Colors.grey[300]!, width: 1)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // Text button - Navigate đến màn hình edit text riêng
+            Expanded(
+              child: InkWell(
+                onTap: () async {
+                  // Chỉ pause video, không dispose để có thể resume khi back về
+                  bool wasPlaying = false;
+                  if (_videoController != null &&
+                      _videoController!.value.isInitialized) {
+                    wasPlaying = _videoController!.value.isPlaying;
+                    try {
+                      await _videoController!.pause();
+                    } catch (e) {
+                      debugPrint('Error pausing video before text edit: $e');
+                    }
+                  }
+
+                  // Navigate đến màn hình edit text riêng - giống sticker tĩnh
+                  await Get.to(
+                    () => AnimatedTextEditScreen(
+                      videoFile: _videoFile!,
+                      textItems: _textItems,
+                      selectedTextId: _selectedTextId,
+                      startTime: _startTime,
+                      endTime: _endTime,
+                      onTextItemsChanged: (items) {
+                        setState(() {
+                          _textItems = items;
+                        });
+                      },
+                      onSelectedTextIdChanged: (id) {
+                        setState(() {
+                          _selectedTextId = id;
+                          if (id != null) {
+                            final item = _textItems.firstWhere(
+                              (i) => i.id == id,
+                            );
+                            _textController.text = item.text;
+                          } else {
+                            _textController.text = '';
+                          }
+                        });
+                      },
+                    ),
+                    transition: Transition.rightToLeft,
+                    duration: const Duration(milliseconds: 200),
+                  );
+
+                  // Resume video khi back về (nếu đang chạy trước đó)
+                  if (_videoController != null &&
+                      _videoController!.value.isInitialized &&
+                      mounted &&
+                      !_isDisposed) {
+                    try {
+                      // Đảm bảo listener vẫn còn
+                      _videoController!.addListener(_videoListener);
+
+                      // Resume play nếu đang chạy trước đó
+                      if (wasPlaying && !_videoController!.value.isPlaying) {
+                        await _videoController!.play();
+                      }
+                    } catch (e) {
+                      debugPrint('Error resuming video after text edit: $e');
+                    }
+                  }
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/icons/icon_edit_text.svg',
+                      width: 28,
+                      height: 28,
+                      colorFilter: ColorFilter.mode(
                         _showTextEditor
                             ? const Color(0xFF00C979)
-                            : Colors.grey[600],
-                    size: 28,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Text',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color:
-                          _showTextEditor
-                              ? const Color(0xFF00C979)
-                              : Colors.grey[600],
-                      fontWeight:
-                          _showTextEditor ? FontWeight.w600 : FontWeight.normal,
+                            : Colors.grey[600]!,
+                        BlendMode.srcIn,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Text',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            _showTextEditor
+                                ? const Color(0xFF00C979)
+                                : Colors.grey[600],
+                        fontWeight:
+                            _showTextEditor
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-          // Sticker button
-          Expanded(
-            child: InkWell(
-              onTap: () {
-                // TODO: Implement sticker picker
-                Get.snackbar(
-                  'Info',
-                  'Sticker feature coming soon',
-                  snackPosition: SnackPosition.BOTTOM,
-                );
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.emoji_emotions_outlined,
-                    color: Colors.grey[600],
-                    size: 28,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Sticker',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[600],
-                      fontWeight: FontWeight.normal,
+            // Sticker button
+            Expanded(
+              child: InkWell(
+                onTap: _openStickerPicker,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/icons/icon_edit_sticker.svg',
+                      width: 28,
+                      height: 28,
+                      colorFilter: ColorFilter.mode(
+                        _stickerLayers.isNotEmpty
+                            ? const Color(0xFF00C979)
+                            : Colors.grey[600]!,
+                        BlendMode.srcIn,
+                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      'Sticker',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            _stickerLayers.isNotEmpty
+                                ? const Color(0xFF00C979)
+                                : Colors.grey[600],
+                        fontWeight:
+                            _stickerLayers.isNotEmpty
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
