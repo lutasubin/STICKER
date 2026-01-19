@@ -1,235 +1,22 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'package:sticker_app/model/user_sticker_pack.dart';
-import 'package:sticker_app/router/router.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/core/utils/date_time_utils.dart';
+import 'package:sticker_app/viewmodel/select_video_viewmodel.dart';
 
 /// Màn hình chọn video cho Animated Sticker
-class SelectVideoScreen extends StatefulWidget {
+class SelectVideoScreen extends StatelessWidget {
   const SelectVideoScreen({super.key});
 
   @override
-  State<SelectVideoScreen> createState() => _SelectVideoScreenState();
-}
-
-class _SelectVideoScreenState extends State<SelectVideoScreen> {
-  UserStickerPack? _pack; // Có thể null nếu tạo sticker động ở ngoài pack
-  String? _replaceStickerUri;
-  bool _goToUserPackDetail = false;
-  bool _isNewPack = false;
-
-  final Map<String, Future<Uint8List?>> _thumbFutures = {};
-
-  final _assets = <AssetEntity>[];
-  bool _loading = true;
-  bool _hasPermission = false;
-
-  AssetEntity? _selectedAsset;
-
-  @override
-  void initState() {
-    super.initState();
-    final args = Get.arguments;
-    if (args is Map) {
-      // Pack có thể null nếu tạo sticker động ở ngoài pack
-      _pack = args['pack'] as UserStickerPack?;
-      _replaceStickerUri = args['replaceStickerUri'] as String?;
-      _goToUserPackDetail = args['goToUserPackDetail'] == true;
-      _isNewPack = args['isNewPack'] == true;
-    } else if (args is UserStickerPack) {
-      _pack = args;
-    } else {
-      // Không có pack: tạo sticker động ở ngoài pack
-      _pack = null;
-    }
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      // Request storage permission
-      final storage =
-          Platform.isAndroid ? await Permission.storage.request() : null;
-      debugPrint(
-        '[SelectVideo] Storage permission: granted=${storage?.isGranted}, denied=${storage?.isDenied}',
-      );
-
-      // Request photo/video permission
-      final permission = await PhotoManager.requestPermissionExtend();
-      if (!mounted) return;
-
-      debugPrint(
-        '[SelectVideo] Photo permission: isAuth=${permission.isAuth}, isLimited=${permission.isLimited}',
-      );
-
-      final hasAccess =
-          permission.isAuth ||
-          permission.isLimited ||
-          (storage?.isGranted ?? false);
-
-      if (!hasAccess) {
-        setState(() {
-          _hasPermission = false;
-          _assets.clear();
-          _thumbFutures.clear();
-        });
-        return;
-      }
-
-      // Load videos thay vì images
-      // Load video galleries
-      debugPrint('[SelectVideo] Loading video paths...');
-      final paths = await PhotoManager.getAssetPathList(
-        type: RequestType.video,
-        onlyAll: true,
-      );
-
-      if (!mounted) return;
-
-      debugPrint('[SelectVideo] Found ${paths.length} video path(s)');
-      if (paths.isEmpty) {
-        debugPrint('[SelectVideo] No video paths found - may need permission');
-      }
-
-      final recent = paths.isNotEmpty ? paths.first : null;
-      final list =
-          recent == null
-              ? <AssetEntity>[]
-              : await recent.getAssetListPaged(page: 0, size: 200);
-
-      if (!mounted) return;
-
-      debugPrint('Loaded video assets: ${list.length}');
-
-      // Filter chỉ lấy video (bỏ filter duration để hiển thị tất cả)
-      final videosOnly =
-          list.where((e) {
-            return e.type == AssetType.video;
-          }).toList();
-
-      debugPrint('Filtered video assets: ${videosOnly.length}');
-
-      setState(() {
-        _hasPermission = true;
-        _assets
-          ..clear()
-          ..addAll(videosOnly);
-        _thumbFutures.clear();
-      });
-    } catch (e, st) {
-      debugPrint('SelectVideoScreen._load error: $e');
-      debugPrint('$st');
-      if (mounted) {
-        setState(() {
-          _hasPermission = false;
-          _assets.clear();
-          _thumbFutures.clear();
-        });
-        Get.snackbar(
-          'error_generic_title'.tr,
-          '${'error_load_videos'.tr}: $e',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<File?> _resolveAssetFile(AssetEntity asset) async {
-    final f1 = await asset.file;
-    if (f1 != null) return f1;
-
-    final f2 = await asset.originFile;
-    if (f2 != null) return f2;
-
-    final bytes = await asset.originBytes;
-    if (bytes == null || bytes.isEmpty) return null;
-
-    final dir = await getTemporaryDirectory();
-    final out = File(
-      '${dir.path}${Platform.pathSeparator}pm_${asset.id}_${DateTime.now().millisecondsSinceEpoch}.mp4',
-    );
-    await out.writeAsBytes(bytes, flush: true);
-    return out;
-  }
-
-  Future<Uint8List?> _thumbFuture(AssetEntity asset) {
-    return _thumbFutures.putIfAbsent(
-      asset.id,
-      () => asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
-    );
-  }
-
-  Future<void> _confirmSelection() async {
-    final asset = _selectedAsset;
-    if (asset == null) {
-      debugPrint('_confirmSelection: no asset selected');
-      return;
-    }
-
-    debugPrint('_confirmSelection: resolving video asset ${asset.id}');
-    final file = await _resolveAssetFile(asset);
-    if (file == null) {
-      Get.snackbar(
-        'error_generic_title'.tr,
-        'error_cannot_read_video'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return;
-    }
-
-    // Get video duration
-    Duration videoDuration = asset.videoDuration;
-    if (videoDuration.inSeconds <= 0) {
-      debugPrint(
-        '[SelectVideoScreen] videoDuration is invalid (${videoDuration.inSeconds}s), '
-        'will be determined from video file',
-      );
-      // Set default, sẽ được update từ video controller
-      videoDuration = const Duration(seconds: 5);
-    }
-
-    debugPrint(
-      '_confirmSelection: navigating to CropVideoScreen with file ${file.path}',
-    );
-    debugPrint(
-      '_confirmSelection: videoDuration = ${videoDuration.inSeconds}s',
-    );
-
-    Get.toNamed(
-      AppRoutes.createAnimatedCrop,
-      arguments: {
-        // Chỉ truyền pack nếu có, nếu null thì không truyền (hoặc truyền null)
-        if (_pack != null) 'pack': _pack,
-        'videoFile': file,
-        'videoDuration': videoDuration,
-        if (_replaceStickerUri != null) 'replaceStickerUri': _replaceStickerUri,
-        'goToUserPackDetail': _goToUserPackDetail,
-        'isNewPack': _isNewPack,
-      },
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final canConfirm = _selectedAsset != null;
+    final viewModel = Get.put(SelectVideoViewModel());
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         leading: IconButton(
           onPressed: Get.back,
@@ -243,109 +30,115 @@ class _SelectVideoScreenState extends State<SelectVideoScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            onPressed: canConfirm ? _confirmSelection : null,
-            icon: Icon(
-              Icons.check,
-              color: canConfirm ? const Color(0xFF00C979) : Colors.grey,
-            ),
-          ),
+          Obx(() {
+            // Đọc canConfirm trực tiếp trong Obx builder
+            final canConfirm = viewModel.canConfirm;
+
+            return IconButton(
+              onPressed: canConfirm ? viewModel.confirmSelection : null,
+              icon: Icon(
+                Icons.check,
+                color: canConfirm ? AppColors.primary : Colors.grey,
+              ),
+            );
+          }),
         ],
       ),
-      body: _buildBody(),
-    );
-  }
+      body: Obx(() {
+        if (viewModel.loading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+        if (!viewModel.hasPermission.value) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'permission_videos_required'.tr,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: viewModel.loadVideos,
+                    child: Text('grant_permission'.tr),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: PhotoManager.openSetting,
+                    child: Text('open_settings'.tr),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
 
-    if (!_hasPermission) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'permission_videos_required'.tr,
-                textAlign: TextAlign.center,
+        if (viewModel.assets.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.video_library_outlined,
+                    size: 64,
+                    color: Colors.black26,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'no_videos_found'.tr,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Không tìm thấy video trong thư viện',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton(
+                    onPressed: viewModel.loadVideos,
+                    child: Text('try_reload_button'.tr),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: Text('grant_permission'.tr),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: PhotoManager.openSetting,
-                child: Text('open_settings'.tr),
-              ),
-            ],
+            ),
+          );
+        }
+
+        // Đọc selectedAsset và assets trực tiếp trong Obx builder
+        final selectedAssetId = viewModel.selectedAsset.value?.id;
+        final assets = viewModel.assets;
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
           ),
-        ),
-      );
-    }
+          itemCount: assets.length,
+          itemBuilder: (context, index) {
+            final asset = assets[index];
+            final isSelected = selectedAssetId == asset.id;
 
-    if (_assets.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.video_library_outlined,
-                size: 64,
-                color: Colors.black26,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'no_videos_found'.tr,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Không tìm thấy video trong thư viện',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 12),
-              TextButton(onPressed: _load, child: Text('try_reload_button'.tr)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: _assets.length,
-      itemBuilder: (context, index) {
-        final asset = _assets[index];
-        final isSelected = _selectedAsset?.id == asset.id;
-
-        return _VideoTile(
-          asset: asset,
-          selected: isSelected,
-          onTap: () {
-            setState(() {
-              _selectedAsset = asset;
-            });
+            return _VideoTile(
+              asset: asset,
+              selected: isSelected,
+              onTap: () => viewModel.selectAsset(asset),
+              thumbFuture: viewModel.thumbFuture(asset),
+            );
           },
-          thumbFuture: _thumbFuture(asset),
         );
-      },
+      }),
     );
   }
 }
@@ -379,7 +172,6 @@ class _VideoTile extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // Thumbnail
             FutureBuilder<Uint8List?>(
               future: thumbFuture,
               builder: (context, snapshot) {
@@ -416,8 +208,6 @@ class _VideoTile extends StatelessWidget {
                 );
               },
             ),
-
-            // Video icon overlay
             Positioned(
               left: 6,
               top: 6,
@@ -434,8 +224,6 @@ class _VideoTile extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Duration overlay
             Positioned(
               right: 6,
               bottom: 6,
@@ -455,8 +243,6 @@ class _VideoTile extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Selected border
             if (selected)
               Positioned.fill(
                 child: DecoratedBox(
@@ -469,8 +255,6 @@ class _VideoTile extends StatelessWidget {
                   ),
                 ),
               ),
-
-            // Selected checkmark
             if (selected)
               Positioned(
                 right: 8,
@@ -492,11 +276,6 @@ class _VideoTile extends StatelessWidget {
   }
 
   String _formatDuration(Duration duration) {
-    final minutes = duration.inMinutes;
-    final seconds = duration.inSeconds % 60;
-    if (minutes > 0) {
-      return '$minutes:${seconds.toString().padLeft(2, '0')}';
-    }
-    return '${seconds}s';
+    return DateTimeUtils.formatDuration(duration);
   }
 }

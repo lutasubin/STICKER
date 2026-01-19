@@ -1,233 +1,20 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:photo_manager/photo_manager.dart';
-import 'package:sticker_app/model/user_sticker_pack.dart';
-import 'package:sticker_app/router/router.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/viewmodel/select_image_viewmodel.dart';
 
-class SelectImageScreen extends StatefulWidget {
+class SelectImageScreen extends StatelessWidget {
   const SelectImageScreen({super.key});
 
   @override
-  State<SelectImageScreen> createState() => _SelectImageScreenState();
-}
-
-class _SelectImageScreenState extends State<SelectImageScreen> {
-  late final UserStickerPack _pack;
-  String? _replaceStickerUri;
-  bool _goToUserPackDetail = false;
-  bool _isNewPack = false;
-
-  final Map<String, Future<Uint8List?>> _thumbFutures = {};
-
-  final _assets = <AssetEntity>[];
-  bool _loading = true;
-  bool _hasPermission = false;
-
-  AssetEntity? _selectedAsset;
-
-  @override
-  void initState() {
-    super.initState();
-    final args = Get.arguments;
-    if (args is Map) {
-      _pack = args['pack'] as UserStickerPack;
-      _replaceStickerUri = args['replaceStickerUri'] as String?;
-      _goToUserPackDetail = args['goToUserPackDetail'] == true;
-      _isNewPack = args['isNewPack'] == true;
-    } else {
-      _pack = args as UserStickerPack;
-    }
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-    });
-
-    try {
-      final storage = Platform.isAndroid ? await Permission.storage.request() : null;
-      debugPrint(
-        'Storage permission: granted=${storage?.isGranted}, denied=${storage?.isDenied}, permanentlyDenied=${storage?.isPermanentlyDenied}, restricted=${storage?.isRestricted}, limited=${storage?.isLimited}',
-      );
-
-      final permission = await PhotoManager.requestPermissionExtend();
-      if (!mounted) return;
-
-      debugPrint(
-        'Photo permission: isAuth=${permission.isAuth}, isLimited=${permission.isLimited}',
-      );
-
-      final hasAccess =
-          permission.isAuth || permission.isLimited || (storage?.isGranted ?? false);
-
-      if (!hasAccess) {
-        setState(() {
-          _hasPermission = false;
-          _assets.clear();
-          _thumbFutures.clear();
-        });
-        return;
-      }
-
-      final paths = await PhotoManager.getAssetPathList(
-        type: RequestType.image,
-        onlyAll: true,
-      );
-
-      if (!mounted) return;
-
-      debugPrint('Asset paths: ${paths.length}');
-
-      final recent = paths.isNotEmpty ? paths.first : null;
-      final list = recent == null
-          ? <AssetEntity>[]
-          : await recent.getAssetListPaged(page: 0, size: 200);
-
-      if (!mounted) return;
-
-      debugPrint('Loaded assets: ${list.length}');
-
-      final imagesOnly = list.where((e) => e.type == AssetType.image).toList();
-
-      setState(() {
-        _hasPermission = true;
-        _assets
-          ..clear()
-          ..addAll(imagesOnly);
-        _thumbFutures.clear();
-      });
-    } catch (e, st) {
-      debugPrint('SelectImageScreen._load error: $e');
-      debugPrint('$st');
-      if (mounted) {
-        setState(() {
-          _hasPermission = false;
-          _assets.clear();
-          _thumbFutures.clear();
-        });
-        Get.snackbar(
-          'error_generic_title'.tr,
-          '${'error_load_photos'.tr}: $e',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
-    }
-  }
-
-  Future<File?> _resolveAssetFile(AssetEntity asset) async {
-    final f1 = await asset.file;
-    if (f1 != null) return f1;
-
-    final f2 = await asset.originFile;
-    if (f2 != null) return f2;
-
-    final bytes = await asset.originBytes;
-    if (bytes == null || bytes.isEmpty) return null;
-
-    final dir = await getTemporaryDirectory();
-    final out = File(
-      '${dir.path}${Platform.pathSeparator}pm_${asset.id}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-    await out.writeAsBytes(bytes, flush: true);
-    return out;
-  }
-
-  Future<Uint8List?> _thumbFuture(AssetEntity asset) {
-    return _thumbFutures.putIfAbsent(
-      asset.id,
-      () => asset.thumbnailDataWithSize(const ThumbnailSize(300, 300)),
-    );
-  }
-
-  Future<void> _openCamera() async {
-    final cam = await Permission.camera.request();
-    if (!cam.isGranted) return;
-
-    final picker = ImagePicker();
-    final captured = await picker.pickImage(source: ImageSource.camera);
-    if (captured == null) return;
-
-    final file = File(captured.path);
-    Get.toNamed(
-      AppRoutes.createStickerCrop,
-      arguments: {
-        'pack': _pack,
-        'imageFile': file,
-        'replaceStickerUri': _replaceStickerUri,
-        'goToUserPackDetail': _goToUserPackDetail,
-        'isNewPack': _isNewPack,
-      },
-    );
-  }
-
-  Future<void> _openGalleryPicker() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked == null) return;
-
-    final file = File(picked.path);
-    Get.toNamed(
-      AppRoutes.createStickerCrop,
-      arguments: {
-        'pack': _pack,
-        'imageFile': file,
-        'replaceStickerUri': _replaceStickerUri,
-        'goToUserPackDetail': _goToUserPackDetail,
-        'isNewPack': _isNewPack,
-      },
-    );
-  }
-
-  Future<void> _confirmSelection() async {
-    final asset = _selectedAsset;
-    if (asset == null) {
-      debugPrint('_confirmSelection: no asset selected');
-      return;
-    }
-
-    debugPrint('_confirmSelection: resolving asset ${asset.id}');
-    final file = await _resolveAssetFile(asset);
-    if (file == null) {
-      Get.snackbar(
-        'error_generic_title'.tr,
-        'error_cannot_read_image'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return;
-    }
-
-    debugPrint('_confirmSelection: navigating to CropScreen with file ${file.path}');
-    Get.toNamed(
-      AppRoutes.createStickerCrop,
-      arguments: {
-        'pack': _pack,
-        'imageFile': file,
-        'replaceStickerUri': _replaceStickerUri,
-        'goToUserPackDetail': _goToUserPackDetail,
-        'isNewPack': _isNewPack,
-      },
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final canConfirm = _selectedAsset != null;
+    final viewModel = Get.put(SelectImageViewModel());
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         leading: IconButton(
           onPressed: Get.back,
@@ -235,116 +22,119 @@ class _SelectImageScreenState extends State<SelectImageScreen> {
         ),
         title: Text(
           'select_image_title'.tr,
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         actions: [
-          IconButton(
-            onPressed: canConfirm ? _confirmSelection : null,
-            icon: Icon(
-              Icons.check,
-              color: canConfirm ? const Color(0xFF00C979) : Colors.grey,
-            ),
-          ),
+          Obx(() {
+            // Đọc canConfirm trực tiếp trong Obx builder
+            final canConfirm = viewModel.canConfirm;
+            
+            return IconButton(
+              onPressed: canConfirm ? viewModel.confirmSelection : null,
+              icon: Icon(
+                Icons.check,
+                color: canConfirm ? AppColors.primary : Colors.grey,
+              ),
+            );
+          }),
         ],
       ),
-      body: _buildBody(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (!_hasPermission) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'permission_photos_required'.tr,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _load,
-                child: Text('grant_permission'.tr),
-              ),
-              const SizedBox(height: 8),
-              ElevatedButton(
-                onPressed: _openGalleryPicker,
-                child: Text('select_from_library'.tr),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: PhotoManager.openSetting,
-                child: Text('open_settings'.tr),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_assets.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'load_failed_message'.tr,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton(
-                onPressed: _openGalleryPicker,
-                child: Text('select_from_library'.tr),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: _load,
-                child: Text('try_reload_button'.tr),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-      ),
-      itemCount: _assets.length + 2,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return _CameraTile(onTap: _openCamera);
+      body: Obx(() {
+        if (viewModel.loading.value) {
+          return const Center(child: CircularProgressIndicator());
         }
 
-        if (index == 1) {
-          return _GalleryTile(onTap: _openGalleryPicker);
+        if (!viewModel.hasPermission.value) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'permission_photos_required'.tr,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: viewModel.loadAssets,
+                    child: Text('grant_permission'.tr),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(
+                    onPressed: viewModel.openGalleryPicker,
+                    child: Text('select_from_library'.tr),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: PhotoManager.openSetting,
+                    child: Text('open_settings'.tr),
+                  ),
+                ],
+              ),
+            ),
+          );
         }
 
-        final asset = _assets[index - 2];
-        final isSelected = _selectedAsset?.id == asset.id;
+        if (viewModel.assets.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('load_failed_message'.tr, textAlign: TextAlign.center),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: viewModel.openGalleryPicker,
+                    child: Text('select_from_library'.tr),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: viewModel.loadAssets,
+                    child: Text('try_reload_button'.tr),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
 
-        return _MediaTile(
-          selected: isSelected,
-          onTap: () {
-            setState(() {
-              _selectedAsset = asset;
-            });
+        // Đọc selectedAsset trực tiếp trong Obx builder
+        final selectedAssetId = viewModel.selectedAsset.value?.id;
+        final assets = viewModel.assets;
+
+        return GridView.builder(
+          padding: const EdgeInsets.all(12),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+          ),
+          itemCount: assets.length + 2,
+          itemBuilder: (context, index) {
+            if (index == 0) {
+              return _CameraTile(onTap: viewModel.openCamera);
+            }
+
+            if (index == 1) {
+              return _GalleryTile(onTap: viewModel.openGalleryPicker);
+            }
+
+            final asset = assets[index - 2];
+            final isSelected = selectedAssetId == asset.id;
+
+            return _MediaTile(
+              selected: isSelected,
+              onTap: () => viewModel.selectAsset(asset),
+              child: _AssetThumb(future: viewModel.thumbFuture(asset)),
+            );
           },
-          child: _AssetThumb(future: _thumbFuture(asset)),
         );
-      },
+      }),
     );
   }
 }
@@ -360,7 +150,11 @@ class _CameraTile extends StatelessWidget {
       selected: false,
       onTap: onTap,
       child: const Center(
-        child: Icon(Icons.photo_camera_outlined, size: 32, color: Colors.black54),
+        child: Icon(
+          Icons.photo_camera_outlined,
+          size: 32,
+          color: Colors.black54,
+        ),
       ),
     );
   }
@@ -383,7 +177,7 @@ class _GalleryTile extends StatelessWidget {
         onTap: onTap,
         child: CustomPaint(
           painter: _DashedRRectBorderPainter(
-            color: const Color(0xFF00C979),
+            color: AppColors.primary,
             radius: 14,
             strokeWidth: 2,
             dashLength: 7,
@@ -424,20 +218,27 @@ class _DashedRRectBorderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final rrect = RRect.fromRectAndRadius(rect.deflate(strokeWidth / 2), Radius.circular(radius));
+    final rrect = RRect.fromRectAndRadius(
+      rect.deflate(strokeWidth / 2),
+      Radius.circular(radius),
+    );
     final path = Path()..addRRect(rrect);
     final metrics = path.computeMetrics().toList(growable: false);
 
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
+    final paint =
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeWidth;
 
     for (final metric in metrics) {
       double distance = 0;
       while (distance < metric.length) {
         final next = distance + dashLength;
-        canvas.drawPath(metric.extractPath(distance, next.clamp(0, metric.length)), paint);
+        canvas.drawPath(
+          metric.extractPath(distance, next.clamp(0, metric.length)),
+          paint,
+        );
         distance = next + gapLength;
       }
     }
@@ -485,10 +286,7 @@ class _MediaTile extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(radius),
-                    border: Border.all(
-                      color: const Color(0xFF00C979),
-                      width: 2.5,
-                    ),
+                    border: Border.all(color: AppColors.primary, width: 2.5),
                   ),
                 ),
               ),

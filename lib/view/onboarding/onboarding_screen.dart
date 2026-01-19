@@ -1,50 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/model/onboard.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/viewmodel/onboarding_viewmodel.dart';
 
-import '../../router/router.dart';
-
-class OnboardingScreen extends StatefulWidget {
+class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key});
 
   @override
-  State<OnboardingScreen> createState() => _OnboardingScreenState();
-}
-
-class _OnboardingScreenState extends State<OnboardingScreen> {
-  final PageController _pageController = PageController();
-  int _currentPage = 0;
-
-  final List<OnboardingData> _pages = [
-    OnboardingData(
-      image: 'assets/images/1.png',
-      title: 'Create Sticker',
-      description:
-          'Turn your photos into cool, custom stickers\n'
-          'with text, effects, and creative tools.',
-    ),
-    OnboardingData(
-      image: 'assets/images/2.png',
-      title: 'Export and Share',
-      description:
-          'Export stickers instantly, use them, and share\n'
-          'with friends on your favorite apps.',
-    ),
-  ];
-
-  void _nextPage() {
-    if (_currentPage < _pages.length - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-      );
-    } else {
-        Get.offAllNamed(AppRoutes.home);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final viewModel = Get.put(OnboardingViewModel());
     final size = MediaQuery.of(context).size;
     final isSmall = size.height < 700;
 
@@ -53,36 +17,26 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            /// PAGE VIEW
             Expanded(
               child: PageView.builder(
-                controller: _pageController,
-                itemCount: _pages.length,
-                onPageChanged: (index) {
-                  setState(() => _currentPage = index);
-                },
+                controller: viewModel.pageController,
+                itemCount: viewModel.pages.length,
+                onPageChanged: viewModel.onPageChanged,
                 itemBuilder: (context, index) {
+                  final page = viewModel.pages[index];
                   return Column(
                     children: [
                       SizedBox(height: size.height * 0.06),
-
-                      /// IMAGE
                       Expanded(
                         flex: 5,
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Image.asset(
-                            _pages[index].image,
-                            fit: BoxFit.contain,
-                          ),
+                          child: Image.asset(page.image, fit: BoxFit.contain),
                         ),
                       ),
-
                       const SizedBox(height: 24),
-
-                      /// TITLE (ĐẬM – GIỐNG STORE)
                       Text(
-                        _pages[index].title,
+                        page.title,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: isSmall ? 22 : 26,
@@ -90,12 +44,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           color: Colors.black,
                         ),
                       ),
-
                       const SizedBox(height: 12),
-
-                      /// DESCRIPTION (NHẠT)
                       Text(
-                        _pages[index].description,
+                        page.description,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: isSmall ? 14 : 16,
@@ -103,53 +54,53 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           height: 1.4,
                         ),
                       ),
-
                       const SizedBox(height: 40),
                     ],
                   );
                 },
               ),
             ),
-
-            /// INDICATOR + NEXT
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  /// DOTS
-                  Row(
-                    children: List.generate(
-                      _pages.length,
-                      (index) => AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.only(right: 8),
-                        width: _currentPage == index ? 24 : 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          color: _currentPage == index
-                              ? const Color(0xFF00C979)
-                              : Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(4),
+              child: Obx(() {
+                // Đọc currentPage trực tiếp trong Obx builder
+                final currentPageIndex = viewModel.currentPage.value;
+
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: List.generate(
+                        viewModel.pages.length,
+                        (index) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.only(right: 8),
+                          width: currentPageIndex == index ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color:
+                                currentPageIndex == index
+                                    ? AppColors.primary
+                                    : Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-
-                  /// NEXT
-                  TextButton(
-                    onPressed: _nextPage,
-                    child: const Text(
-                      'NEXT',
-                      style: TextStyle(
-                        color: Color(0xFF00C979),
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    TextButton(
+                      onPressed: viewModel.nextPage,
+                      child: const Text(
+                        'NEXT',
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  )
-                ],
-              ),
+                  ],
+                );
+              }),
             ),
           ],
         ),

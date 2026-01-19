@@ -12,7 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
+import 'package:sticker_app/data/service/user_sticker_pack_service.dart';
+import 'package:sticker_app/viewmodel/edit_sticker_viewmodel.dart';
 import 'package:sticker_app/view/edit_sticker/background_picker_screen.dart';
 import 'package:sticker_app/view/edit_sticker/text_edit_screen.dart';
 import 'package:sticker_app/view/edit_sticker/sticker_picker_screen.dart';
@@ -61,6 +62,9 @@ class _EditStickerScreenState extends State<EditStickerScreen>
   @override
   void initState() {
     super.initState();
+    // Initialize ViewModel
+    Get.put(EditStickerViewModel());
+
     final args = Get.arguments as Map;
     final stickerUri = args['stickerUri'] as String;
     final isTempFile = args['isTempFile'] == true;

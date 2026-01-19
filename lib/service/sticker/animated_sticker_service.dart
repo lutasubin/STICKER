@@ -1489,4 +1489,179 @@ class AnimatedStickerService {
       }
     }
   }
+
+  /// Compress animated WebP file nếu > 500KB
+  /// Đảm bảo file < 500KB trước khi save vào WhatsApp
+  static Future<String> compressAnimatedWebPIfNeeded({
+    required String filePath,
+    int maxSizeKB = 500,
+  }) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('File not found: $filePath');
+    }
+
+    final fileSize = await file.length();
+    final fileSizeKB = fileSize / 1024;
+
+    AppLogger.i(
+      '[AnimatedStickerService] Checking file size: ${fileSizeKB.toStringAsFixed(2)} KB',
+    );
+
+    // Nếu file <= maxSizeKB, không cần compress
+    if (fileSize <= maxSizeKB * 1024) {
+      AppLogger.i(
+        '[AnimatedStickerService] File size OK (${fileSizeKB.toStringAsFixed(2)} KB <= $maxSizeKB KB)',
+      );
+      return filePath;
+    }
+
+    AppLogger.w(
+      '[AnimatedStickerService] File too large (${fileSizeKB.toStringAsFixed(2)} KB > $maxSizeKB KB), compressing...',
+    );
+
+    // Tính toán quality và FPS dựa trên file size
+    int quality = 40;
+    int fps = 6;
+
+    if (fileSize > 800 * 1024) {
+      quality = 30;
+      fps = 5;
+    } else if (fileSize > 650 * 1024) {
+      quality = 35;
+      fps = 5;
+    } else if (fileSize > 550 * 1024) {
+      quality = 40;
+      fps = 6;
+    }
+
+    // Re-encode với quality và FPS thấp hơn
+    final compressCommand =
+        '-y '
+        '-i "$filePath" '
+        '-r $fps '
+        '-c:v libwebp '
+        '-quality $quality '
+        '-lossless 0 '
+        '-compression_level 6 '
+        '-method 6 '
+        '-loop 0 '
+        '"$filePath"';
+
+    AppLogger.d(
+      '[AnimatedStickerService] Compressing with quality=$quality, fps=$fps',
+    );
+
+    final session = await FFmpegKit.execute(compressCommand);
+    final returnCode = await session.getReturnCode();
+
+    if (ReturnCode.isSuccess(returnCode)) {
+      final newFileSize = await file.length();
+      final newFileSizeKB = newFileSize / 1024;
+
+      AppLogger.i(
+        '[AnimatedStickerService] Compressed to: ${newFileSizeKB.toStringAsFixed(2)} KB '
+        '(quality: $quality, fps: $fps)',
+      );
+
+      // Nếu vẫn quá lớn, thử lại với quality thấp hơn
+      if (newFileSize > maxSizeKB * 1024) {
+        AppLogger.w(
+          '[AnimatedStickerService] Still too large, trying lower quality...',
+        );
+
+        // Giảm quality xuống 25, fps 4
+        final ultraLowCommand =
+            '-y '
+            '-i "$filePath" '
+            '-r 4 '
+            '-c:v libwebp '
+            '-quality 25 '
+            '-lossless 0 '
+            '-compression_level 6 '
+            '-method 6 '
+            '-loop 0 '
+            '"$filePath"';
+
+        final ultraSession = await FFmpegKit.execute(ultraLowCommand);
+        final ultraReturnCode = await ultraSession.getReturnCode();
+
+        if (ReturnCode.isSuccess(ultraReturnCode)) {
+          final ultraFileSize = await file.length();
+          final ultraFileSizeKB = ultraFileSize / 1024;
+
+          AppLogger.i(
+            '[AnimatedStickerService] Ultra compressed to: ${ultraFileSizeKB.toStringAsFixed(2)} KB',
+          );
+
+          // Nếu VẪN quá lớn, thử quality 20, fps 3
+          if (ultraFileSize > maxSizeKB * 1024) {
+            AppLogger.w(
+              '[AnimatedStickerService] Still too large, trying minimum quality...',
+            );
+
+            final minimumCommand =
+                '-y '
+                '-i "$filePath" '
+                '-r 3 '
+                '-c:v libwebp '
+                '-quality 20 '
+                '-lossless 0 '
+                '-compression_level 6 '
+                '-method 6 '
+                '-loop 0 '
+                '"$filePath"';
+
+            final minimumSession = await FFmpegKit.execute(minimumCommand);
+            final minimumReturnCode = await minimumSession.getReturnCode();
+
+            if (ReturnCode.isSuccess(minimumReturnCode)) {
+              final minimumFileSize = await file.length();
+              final minimumFileSizeKB = minimumFileSize / 1024;
+
+              AppLogger.i(
+                '[AnimatedStickerService] Minimum compressed to: ${minimumFileSizeKB.toStringAsFixed(2)} KB',
+              );
+
+              if (minimumFileSize > maxSizeKB * 1024) {
+                AppLogger.e(
+                  '[AnimatedStickerService] CRITICAL: File still > ${maxSizeKB}KB after all compressions! '
+                  'Size: ${minimumFileSizeKB.toStringAsFixed(2)} KB',
+                );
+                throw Exception(
+                  'Không thể giảm file size xuống < ${maxSizeKB}KB. '
+                  'File size hiện tại: ${minimumFileSizeKB.toStringAsFixed(2)} KB. '
+                  'Vui lòng thử với video ngắn hơn hoặc đơn giản hơn.',
+                );
+              }
+            }
+          }
+        }
+      }
+    } else {
+      AppLogger.e(
+        '[AnimatedStickerService] Compression failed, but continuing with original file',
+      );
+    }
+
+    // Validate final file size
+    final finalFileSize = await file.length();
+    final finalFileSizeKB = finalFileSize / 1024;
+
+    if (finalFileSize > maxSizeKB * 1024) {
+      AppLogger.e(
+        '[AnimatedStickerService] File still > ${maxSizeKB}KB after compression: ${finalFileSizeKB.toStringAsFixed(2)} KB',
+      );
+      throw Exception(
+        'File size vẫn quá lớn sau khi nén: ${finalFileSizeKB.toStringAsFixed(2)} KB. '
+        'Vui lòng thử với video ngắn hơn.',
+      );
+    }
+
+    AppLogger.i(
+      '[AnimatedStickerService] Compression successful: ${finalFileSizeKB.toStringAsFixed(2)} KB <= $maxSizeKB KB',
+    );
+
+    return filePath;
+  }
 }

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
+import 'package:sticker_app/data/repository/user_sticker_pack_repository.dart';
+import 'package:sticker_app/data/service/user_sticker_pack_service.dart';
 import 'package:sticker_app/service/splash_service/navigation_service.dart';
 import 'package:sticker_app/service/splash_service/preload_service.dart';
 import 'package:sticker_app/service/splash_service/storage_service.dart';
 
-
 /// AppBinding - Khởi tạo tất cả services và controllers
-/// 
+///
 /// Cấu trúc phân tầng:
 /// TIER 1: Core Infrastructure (StorageService)
 /// TIER 2: Business Services (PreloadService, NavigationService, VpnTimerService)
@@ -16,29 +16,26 @@ class AppBinding extends Bindings {
   @override
   Future<void> dependencies() async {
     debugPrint('🚀 AppBinding: Starting initialization...');
-    
+
     // ============ TIER 1: Core Infrastructure ============
     // Services không phụ thuộc vào bất kỳ service nào khác
-    
+
     _initStorageService();
-    
+
     // ============ TIER 2: Business Services ============
     // Services có thể phụ thuộc vào TIER 1
-    
+
     _initPreloadService();
     _initNavigationService();
     _initUserStickerPackService();
-    
-    
+    _initUserStickerPackRepository();
+
     debugPrint('🎉 AppBinding: Initialization complete!\n');
   }
 
   /// TIER 1: Storage Service (Permanent)
   void _initStorageService() {
-    Get.put<StorageService>(
-      StorageService(),
-      permanent: true,
-    );
+    Get.put<StorageService>(StorageService(), permanent: true);
     debugPrint('✅ [TIER 1] StorageService initialized');
   }
 
@@ -53,18 +50,34 @@ class AppBinding extends Bindings {
 
   /// TIER 2: Navigation Service (Permanent)
   void _initNavigationService() {
-    Get.put<NavigationService>(
-      NavigationService(),
-      permanent: true,
-    );
+    Get.put<NavigationService>(NavigationService(), permanent: true);
     debugPrint('✅ [TIER 2] NavigationService initialized');
   }
 
   void _initUserStickerPackService() {
-    Get.put<UserStickerPackService>(
-      UserStickerPackService(),
+    Get.put<UserStickerPackService>(UserStickerPackService(), permanent: true);
+    debugPrint('✅ [TIER 2] UserStickerPackService initialized');
+  }
+
+  /// TIER 3: Repository Layer (Permanent)
+  /// Repository phụ thuộc vào Service, nên Service phải được khởi tạo trước
+  void _initUserStickerPackRepository() {
+    // Đảm bảo Service đã được khởi tạo và sẵn sàng
+    if (!Get.isRegistered<UserStickerPackService>()) {
+      debugPrint(
+        '⚠️ [TIER 3] UserStickerPackService not found, initializing...',
+      );
+      _initUserStickerPackService();
+    }
+
+    // Đảm bảo Service đã được khởi tạo hoàn toàn (onInit đã được gọi)
+    final service = Get.find<UserStickerPackService>();
+
+    // Tạo Repository với Service đã được inject
+    Get.put<UserStickerPackRepository>(
+      UserStickerPackRepository(service: service),
       permanent: true,
     );
-    debugPrint('✅ [TIER 2] UserStickerPackService initialized');
+    debugPrint('✅ [TIER 3] UserStickerPackRepository initialized');
   }
 }

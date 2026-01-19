@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import 'package:sticker_app/service/sticker/sticker_edit_service.dart';
 import 'package:sticker_app/service/sticker/video_cache_service.dart';
 import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
+import 'package:sticker_app/viewmodel/sticker_picker_viewmodel.dart';
 import 'package:video_player/video_player.dart';
 
 /// Màn hình chọn sticker (tách riêng như trong ảnh)
@@ -41,6 +42,9 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize ViewModel
+    Get.put(StickerPickerViewModel());
+
     _loadBackground();
     _loadStickers();
   }
