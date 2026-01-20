@@ -36,8 +36,8 @@ android {
         applicationId = "com.mobileai.stickerapp"
         minSdk = 24
         targetSdk = 35
-        versionCode = 15
-        versionName = "6.0"
+        versionCode = 17
+        versionName = "7.1"
     }
 
      signingConfigs {
@@ -56,8 +56,8 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            
-            // Enable ProGuard/R8 for code obfuscation and optimization
+
+            // Enable ProGuard/R8 cho bản release
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -69,8 +69,15 @@ android {
         getByName("debug") {
             // Debug build không dùng keystore release
             // Sử dụng keystore debug mặc định
-            isMinifyEnabled = false
+
+            // BẬT ProGuard cho debug để test lỗi giống bản release
+            isMinifyEnabled = true
+            // Tắt shrinkResources để log dễ đọc hơn, build nhanh hơn
             isShrinkResources = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }

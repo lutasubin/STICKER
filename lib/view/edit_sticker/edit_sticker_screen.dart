@@ -266,12 +266,9 @@ class _EditStickerScreenState extends State<EditStickerScreen>
         final baseStickerSize = canvasSize * stickerSizeRatio;
         final stickerSize = baseStickerSize * layer.scale;
 
-        // Position được lưu trong canvas coordinates (512x512) - top-left của sticker
-        // Tính center của sticker trong canvas coordinates
-        final stickerCenter = Offset(
-          layer.position.dx + stickerSize / 2,
-          layer.position.dy + stickerSize / 2,
-        );
+        // Position được lưu trong canvas coordinates (512x512) - là CENTER của sticker
+        // Sử dụng trực tiếp position như center (không cần tính toán thêm)
+        final stickerCenter = layer.position;
 
         final srcRect = Rect.fromLTWH(
           0,

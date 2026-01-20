@@ -149,12 +149,23 @@ class _TransformableStickerLayerState extends State<TransformableStickerLayer> {
   }
 
   // Helper method để giới hạn position trong canvas
+  // Position là CENTER của sticker, cần đảm bảo sticker không bị cắt ra ngoài canvas
   void _clampPosition() {
     final stickerSize = widget.canvasSize * _scale * _stickerSizeRatio;
     final halfSticker = stickerSize / 2;
+
+    // Tính toán bounds chính xác:
+    // - Min: sticker phải nằm trong canvas, nên center không được nhỏ hơn halfSticker
+    // - Max: sticker phải nằm trong canvas, nên center không được lớn hơn canvasSize - halfSticker
+    final minX = halfSticker;
+    final maxX = widget.canvasSize - halfSticker;
+    final minY = halfSticker;
+    final maxY = widget.canvasSize - halfSticker;
+
+    // Clamp với bounds chính xác hơn
     _position = Offset(
-      _position.dx.clamp(-halfSticker, widget.canvasSize - halfSticker),
-      _position.dy.clamp(-halfSticker, widget.canvasSize - halfSticker),
+      _position.dx.clamp(minX, maxX),
+      _position.dy.clamp(minY, maxY),
     );
   }
 

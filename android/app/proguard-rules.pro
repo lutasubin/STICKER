@@ -1,141 +1,60 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Flutter
+-keep class io.flutter.** { *; }
+-dontwarn io.flutter.**
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
-
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-# Flutter specific rules
--keep class io.flutter.app.** { *; }
--keep class io.flutter.plugin.**  { *; }
--keep class io.flutter.util.**  { *; }
--keep class io.flutter.view.**  { *; }
--keep class io.flutter.**  { *; }
--keep class io.flutter.plugins.**  { *; }
-
-# WhatsApp Sticker specific rules
+# App code - Giữ nguyên tất cả class trong package
 -keep class com.mobileai.stickerapp.** { *; }
--keep class com.mobileai.stickerapp.StickerContentProvider { *; }
--keep class com.mobileai.stickerapp.StickerPack { *; }
--keep class com.mobileai.stickerapp.Sticker { *; }
--keep class com.mobileai.stickerapp.StickerPackLoader { *; }
--keep class com.mobileai.stickerapp.ContentFileParser { *; }
--keep class com.mobileai.stickerapp.ConfigFileManager { *; }
--keep class com.mobileai.stickerapp.StickerPackValidator { *; }
--keep class com.mobileai.stickerapp.WhatsappStickersPlugin { *; }
 
-# Keep all model classes that might be serialized
--keepclassmembers class * {
-    @android.webkit.JavascriptInterface <methods>;
+# ContentProvider - Bắt buộc cho WhatsApp integration
+-keep class com.mobileai.stickerapp.StickerContentProvider { *; }
+-keepclassmembers class com.mobileai.stickerapp.StickerContentProvider {
+    public static final *;
 }
 
-# Keep native methods
--keepclasseswithmembernames class * {
+# Parcelable classes - Cần giữ nguyên để serialize/deserialize
+-keep class com.mobileai.stickerapp.StickerPack implements android.os.Parcelable {
+    *;
+    public static final android.os.Parcelable$Creator CREATOR;
+}
+-keep class com.mobileai.stickerapp.Sticker implements android.os.Parcelable {
+    *;
+    public static final android.os.Parcelable$Creator CREATOR;
+}
+
+# TensorFlow Lite - Giữ nguyên native methods và classes
+-keep class org.tensorflow.lite.** { *; }
+-dontwarn org.tensorflow.lite.**
+-keep class com.mobileai.stickerapp.** {
     native <methods>;
 }
 
-# Keep enums
--keepclassmembers enum * {
-    public static **[] values();
-    public static ** valueOf(java.lang.String);
+# FFmpeg Kit - Giữ nguyên native code (plugin dùng package com.antonkarpenko.ffmpegkit)
+-keep class com.antonkarpenko.ffmpegkit.** { *; }
+-dontwarn com.antonkarpenko.ffmpegkit.**
+
+# Kotlin - Giữ nguyên reflection và coroutines
+-keep class kotlin.** { *; }
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.**
+-keepclassmembers class **$WhenMappings {
+    <fields>;
+}
+-keepclassmembers class kotlin.Metadata {
+    public <methods>;
 }
 
-# Keep Parcelable implementations
--keep class * implements android.os.Parcelable {
-    public static final ** CREATOR;
-}
+# GetX - Giữ nguyên reflection nếu có
+-keep class com.jonataslaw.** { *; }
+-dontwarn com.jonataslaw.**
 
-# Keep R class
--keepclassmembers class **.R$* {
-    public static <fields>;
-}
-
-# Keep SQLite related classes
--keep class * extends android.database.sqlite.SQLiteOpenHelper { *; }
-
-# Keep ContentProvider classes
--keep class * extends android.content.ContentProvider { *; }
-
-# Keep custom exceptions
--keep public class * extends java.lang.Exception
-
-# Gson rules (if using Gson)
--keepattributes Signature
--keepattributes *Annotation*
--dontwarn sun.misc.**
--keep class com.google.gson.** { *; }
--keep class * implements com.google.gson.TypeAdapterFactory
--keep class * implements com.google.gson.JsonSerializer
--keep class * implements com.google.gson.JsonDeserializer
-
-# OkHttp rules (if using OkHttp)
--dontwarn okhttp3.**
--dontwarn okio.**
--dontwarn javax.annotation.**
--keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
-
-# Glide rules (if using Glide)
--keep public class * implements com.bumptech.glide.module.GlideModule
--keep class * extends com.bumptech.glide.module.AppGlideModule {
- <init>(...);
-}
--keep public enum com.bumptech.glide.load.ImageHeaderParser$** {
-  **[] $VALUES;
-  public *;
-}
--keep class com.bumptech.glide.load.data.ParcelFileDescriptorRewinder$InternalRewinder {
-  *** rewind();
-}
-
-# GetX rules (if using GetX)
--keep class * extends io.flutter.embedding.android.FlutterActivity { *; }
--keep class * extends io.flutter.embedding.android.FlutterFragmentActivity { *; }
-
-# Image picker and photo manager rules
--keep class com.flutter.plugins.** { *; }
--keep class com.baseflow.** { *; }
-
-# Permission handler rules
--keep class com.baseflow.permissionhandler.** { *; }
-
-# Share_plus rules
+# Photo Manager & Image Processing
+-keep class top.kikt.** { *; }
+-dontwarn top.kikt.**
 -keep class io.flutter.plugins.** { *; }
+-dontwarn io.flutter.plugins.**
 
-# Remove debug logs in release
--assumenosideeffects class android.util.Log {
-    public static *** v(...);
-    public static *** d(...);
-    public static *** i(...);
-}
-
-# Keep all implementation of Flutter plugins
--keep class io.flutter.plugins.** { *; }
--keep class androidx.annotation.Keep { *; }
--keep @androidx.annotation.Keep class * { *; }
--keepclasseswithmembers class * {
+# JSON parsing - Giữ nguyên nếu dùng reflection
+-keepclassmembers class * {
+    @androidx.annotation.Keep <fields>;
     @androidx.annotation.Keep <methods>;
 }
--keepclasseswithmembers class * {
-    @androidx.annotation.Keep <fields>;
-}
-
-# Play Core library rules for Flutter Play Store Split Compatibility
--keep class com.google.android.play.core.** { *; }
--keep class com.google.android.play.core.splitinstall.** { *; }
--keep class com.google.android.play.core.tasks.** { *; }
--dontwarn com.google.android.play.core.**
