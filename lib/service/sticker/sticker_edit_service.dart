@@ -1,3 +1,5 @@
+// Keep original file for StickerCategory enum and service
+// This file contains the enum definition that other files depend on
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -29,22 +31,17 @@ class StickerEditService {
   factory StickerEditService() => _instance;
   StickerEditService._internal();
 
-  /// Cache danh sách sticker theo category
   final Map<StickerCategory, List<String>> _stickerCache = {};
 
-  /// Load danh sách sticker từ một category
   Future<List<String>> getStickersByCategory(StickerCategory category) async {
-    // Kiểm tra cache trước
     if (_stickerCache.containsKey(category)) {
       return _stickerCache[category]!;
     }
 
     try {
-      // Sử dụng AssetManifest.loadFromAssetBundle (API đúng cho Flutter 3.19+)
       final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       final List<String> allAssets = assetManifest.listAssets();
 
-      // Lọc các asset thuộc category này
       final categoryPath = category.assetPath;
       final stickers =
           allAssets
@@ -53,7 +50,6 @@ class StickerEditService {
               )
               .toList()
             ..sort((a, b) {
-              // Sắp xếp theo số thứ tự trong tên file
               final aMatch = RegExp(r'(\d+)').firstMatch(a);
               final bMatch = RegExp(r'(\d+)').firstMatch(b);
               if (aMatch != null && bMatch != null) {
@@ -64,7 +60,6 @@ class StickerEditService {
               return a.compareTo(b);
             });
 
-      // Cache kết quả
       _stickerCache[category] = stickers;
       return stickers;
     } catch (e) {
@@ -73,27 +68,21 @@ class StickerEditService {
     }
   }
 
-  /// Lấy tất cả categories
   List<StickerCategory> getAllCategories() {
     return StickerCategory.values;
   }
 
-  /// Cache danh sách backgrounds
   List<String>? _backgroundCache;
 
-  /// Load danh sách background images
   Future<List<String>> getBackgrounds() async {
-    // Kiểm tra cache trước
     if (_backgroundCache != null) {
       return _backgroundCache!;
     }
 
     try {
-      // Sử dụng AssetManifest.loadFromAssetBundle (API đúng cho Flutter 3.19+)
       final assetManifest = await AssetManifest.loadFromAssetBundle(rootBundle);
       final List<String> allAssets = assetManifest.listAssets();
 
-      // Lọc các asset trong folder background
       const backgroundPath = 'assets/sticker_edit/background/';
       final backgrounds =
           allAssets
@@ -103,7 +92,6 @@ class StickerEditService {
               )
               .toList()
             ..sort((a, b) {
-              // Sắp xếp theo số thứ tự trong tên file
               final aMatch = RegExp(r'(\d+)').firstMatch(a);
               final bMatch = RegExp(r'(\d+)').firstMatch(b);
               if (aMatch != null && bMatch != null) {
@@ -114,7 +102,6 @@ class StickerEditService {
               return a.compareTo(b);
             });
 
-      // Cache kết quả
       _backgroundCache = backgrounds;
       return backgrounds;
     } catch (e) {
@@ -123,7 +110,6 @@ class StickerEditService {
     }
   }
 
-  /// Clear cache (nếu cần)
   void clearCache() {
     _stickerCache.clear();
     _backgroundCache = null;

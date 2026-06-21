@@ -3,22 +3,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/model/user_sticker_pack.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/data/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/view/home/widgets/home_bottom_bar.dart';
+import 'package:sticker_app/viewmodel/my_sticker_viewmodel.dart';
 
-class MyStickerScreen extends StatefulWidget {
+class MyStickerScreen extends StatelessWidget {
   const MyStickerScreen({super.key});
 
-  @override
-  State<MyStickerScreen> createState() => _MyStickerScreenState();
-}
-
-class _MyStickerScreenState extends State<MyStickerScreen> {
-  final _packs = <UserStickerPack>[];
-
-  Future<void> _openCreateStickerSheet() async {
+  Future<void> _openCreateStickerSheet(BuildContext context) async {
+    final viewModel = Get.put(MyStickerViewModel());
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -29,9 +24,11 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
         return SafeArea(
           top: false,
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFFF6F6F6),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -78,55 +75,19 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
     if (result == null) return;
 
     if (result == 'regular') {
-      final service = Get.find<UserStickerPackService>();
-      final UserStickerPack pack = service.createDraftPack(
-        title: 'default_pack_name'.tr,
-      );
-
-      if (!mounted) return;
-      Get.toNamed(
-        AppRoutes.createStickerSelectImage,
-        arguments: {'pack': pack, 'isNewPack': true},
-      )?.then((_) {
-        if (mounted) _load();
-      });
+      await viewModel.createRegularPack();
       return;
     }
 
     if (result == 'animated') {
-      final service = Get.find<UserStickerPackService>();
-      final UserStickerPack pack = service.createDraftPack(
-        title: 'default_pack_name'.tr,
-        isAnimated: true, // Đánh dấu pack này là pack cho sticker động
-      );
-
-      if (!mounted) return;
-      Get.toNamed(
-        AppRoutes.createAnimatedSelectVideo,
-        arguments: {'pack': pack, 'isNewPack': true},
-      )?.then((_) {
-        if (mounted) _load();
-      });
+      await viewModel.createAnimatedPack();
     }
   }
 
   @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  void _load() {
-    final service = Get.find<UserStickerPackService>();
-    setState(() {
-      _packs
-        ..clear()
-        ..addAll(service.getAll());
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final viewModel = Get.put(MyStickerViewModel());
+
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),
       appBar: AppBar(
@@ -142,25 +103,29 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
           ),
         ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _packs.length,
-        itemBuilder: (context, index) {
-          final pack = _packs[index];
-          return InkWell(
-            onTap: () async {
-              final changed = await Get.toNamed(
-                AppRoutes.userPackDetail,
-                arguments: pack,
-              );
-              if (!mounted) return;
-              if (changed == true) _load();
-            },
-            borderRadius: BorderRadius.circular(16),
-            child: _UserPackTile(pack: pack),
-          );
-        },
-      ),
+      body: Obx(() {
+        // Đọc packs trực tiếp trong Obx builder
+        final packs = viewModel.packs;
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: packs.length,
+          itemBuilder: (context, index) {
+            final pack = packs[index];
+            return InkWell(
+              onTap: () async {
+                final changed = await Get.toNamed(
+                  AppRoutes.userPackDetail,
+                  arguments: pack,
+                );
+                if (changed == true) viewModel.loadPacks();
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: _UserPackTile(pack: pack),
+            );
+          },
+        );
+      }),
       bottomNavigationBar: HomeBottomBar(
         currentIndex: 1,
         onTap: (index) {
@@ -169,15 +134,15 @@ class _MyStickerScreenState extends State<MyStickerScreen> {
             return;
           }
           if (index == 1) {
-            _load();
+            viewModel.loadPacks();
             return;
           }
         },
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: FloatingActionButton(
-        onPressed: _openCreateStickerSheet,
-        backgroundColor: const Color(0xFF00C979),
+        onPressed: () => _openCreateStickerSheet(context),
+        backgroundColor: AppColors.primary,
         elevation: 4,
         shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 32),
@@ -273,7 +238,6 @@ class _UserPackTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        // Hiển thị indicator cho pack animated
                         if (pack.isAnimated)
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -281,10 +245,10 @@ class _UserPackTile extends StatelessWidget {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF00C979).withOpacity(0.1),
+                              color: AppColors.primary.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(
-                                color: const Color(0xFF00C979),
+                                color: AppColors.primary,
                                 width: 1,
                               ),
                             ),
@@ -294,7 +258,7 @@ class _UserPackTile extends StatelessWidget {
                                 const Icon(
                                   Icons.play_circle_outline,
                                   size: 14,
-                                  color: Color(0xFF00C979),
+                                  color: AppColors.primary,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
@@ -302,7 +266,7 @@ class _UserPackTile extends StatelessWidget {
                                   style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF00C979),
+                                    color: AppColors.primary,
                                   ),
                                 ),
                               ],

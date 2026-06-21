@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/model/sticker_pack.dart';
+import 'package:sticker_app/data/model/sticker_pack.dart';
 
 /// Item hiển thị 1 gói sticker trong list.
 class StickerPackTile extends StatelessWidget {

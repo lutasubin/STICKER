@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/controller/home/home_controller.dart';
-import 'package:sticker_app/model/sticker_pack.dart';
-import 'package:sticker_app/model/user_sticker_pack.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/data/model/sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
 import 'package:sticker_app/view/home/widgets/home_bottom_bar.dart';
 import 'package:sticker_app/view/home/widgets/home_category_tab_bar.dart';
 import 'package:sticker_app/view/home/widgets/sticker_pack_tile.dart';
+import 'package:sticker_app/viewmodel/home_viewmodel.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -24,9 +23,11 @@ class HomeScreen extends StatelessWidget {
         return SafeArea(
           top: false,
           child: Container(
-            decoration: const BoxDecoration(
-              color: Color(0xFFF6F6F6),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
@@ -72,35 +73,21 @@ class HomeScreen extends StatelessWidget {
 
     if (result == null) return;
 
-    if (result == 'regular') {
-      final service = Get.find<UserStickerPackService>();
-      final UserStickerPack pack = service.createDraftPack(
-        title: 'default_pack_name'.tr,
-      );
+    final controller = Get.put(HomeViewModel());
 
-      Get.toNamed(
-        AppRoutes.createStickerSelectImage,
-        arguments: {'pack': pack, 'isNewPack': true},
-      );
+    if (result == 'regular') {
+      await controller.createRegularPack();
       return;
     }
 
     if (result == 'animated') {
-      final service = Get.find<UserStickerPackService>();
-      final UserStickerPack pack = service.createDraftPack(
-        title: 'default_pack_name'.tr,
-      );
-
-      Get.toNamed(
-        AppRoutes.createAnimatedSelectVideo,
-        arguments: {'pack': pack, 'isNewPack': true},
-      );
+      await controller.createAnimatedPack();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(HomeController());
+    final controller = Get.put(HomeViewModel());
 
     return Scaffold(
       backgroundColor: Color(0xFFF6F6F6),
@@ -132,12 +119,15 @@ class HomeScreen extends StatelessWidget {
         children: [
           const Divider(height: 1, thickness: 0.5),
           Expanded(
-            child: Obx(
-              () => ListView.builder(
+            child: Obx(() {
+              // Đọc packs trực tiếp trong Obx builder
+              final packs = controller.packs;
+
+              return ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: controller.packs.length,
+                itemCount: packs.length,
                 itemBuilder: (context, index) {
-                  final StickerPack pack = controller.packs[index];
+                  final StickerPack pack = packs[index];
                   return StickerPackTile(
                     pack: pack,
                     onAdd:
@@ -152,8 +142,8 @@ class HomeScreen extends StatelessWidget {
                         ),
                   );
                 },
-              ),
-            ),
+              );
+            }),
           ),
         ],
       ),

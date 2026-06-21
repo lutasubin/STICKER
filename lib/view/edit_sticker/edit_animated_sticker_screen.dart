@@ -11,7 +11,8 @@ import 'package:sticker_app/controller/animated_sticker/animated_sticker_control
     show AnimatedStickerController, CropShapeMode;
 import 'package:sticker_app/model/user_sticker_pack.dart';
 import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
+import 'package:sticker_app/data/service/user_sticker_pack_service.dart';
+import 'package:sticker_app/viewmodel/edit_animated_sticker_viewmodel.dart';
 import 'package:sticker_app/service/sticker/video_cache_service.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:sticker_app/view/edit_sticker/animated_text_edit_screen.dart';
@@ -183,6 +184,9 @@ class _EditAnimatedStickerScreenState extends State<EditAnimatedStickerScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize ViewModel
+    Get.put(EditAnimatedStickerViewModel());
 
     // Đảm bảo AnimatedStickerController đã được inject
     // Nếu chưa có → tạo mới và đánh dấu là của màn này

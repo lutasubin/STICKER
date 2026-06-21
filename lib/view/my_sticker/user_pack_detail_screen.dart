@@ -1,394 +1,75 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:sticker_app/helper/dialogs/app_dialogs.dart';
-import 'package:sticker_app/helper/logger/app_logger.dart';
-import 'package:sticker_app/model/user_sticker_pack.dart';
-import 'package:sticker_app/router/router.dart';
-import 'package:sticker_app/service/sticker/user_sticker_pack_service.dart';
-import 'package:sticker_app/service/sticker/whatsapp_sticker_service.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_export_button.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_header.dart';
 import 'package:sticker_app/view/my_sticker/widgets/user_pack_sticker_grid.dart';
+import 'package:sticker_app/viewmodel/user_pack_detail_viewmodel.dart';
 
-class UserPackDetailScreen extends StatefulWidget {
+class UserPackDetailScreen extends StatelessWidget {
   const UserPackDetailScreen({super.key});
 
   @override
-  State<UserPackDetailScreen> createState() => _UserPackDetailScreenState();
-}
-
-class _UserPackDetailScreenState extends State<UserPackDetailScreen> {
-  late UserStickerPack _pack;
-  final _whatsApp = const WhatsappStickerService();
-  bool _isSending = false;
-  bool _changed = false;
-  bool _isInstalled = false;
-  bool _isChecking = true;
-  bool _needsUpdate = false; // Track nếu pack cần update
-
-  @override
-  void initState() {
-    super.initState();
-    _pack = Get.arguments as UserStickerPack;
-    _checkInstalledStatus();
-  }
-
-  Future<void> _checkInstalledStatus({bool updateNeedsUpdate = true}) async {
-    try {
-      final service = Get.find<UserStickerPackService>();
-
-      // Reload pack để lấy lastModifiedAtMs mới nhất
-      final refreshedPack = service.getById(_pack.id);
-      if (refreshedPack != null) {
-        _pack = refreshedPack;
-      }
-
-      // Check WhatsApp native (có thể không đáng tin cậy)
-      final installedInWhatsApp = await _whatsApp.isStickerPackInstalled(
-        _pack.id,
-      );
-
-      // Check local storage (đáng tin cậy hơn)
-      final installedAt = service.getPackInstalledAt(_pack.id);
-      final hasInstalledRecord = installedAt != null;
-
-      // Nếu có installedAt record → pack đã từng được cài
-      // → cho phép update, dù WhatsApp native check trả về false
-      final isInstalled = installedInWhatsApp || hasInstalledRecord;
-
-      // Nếu WhatsApp native check = true nhưng chưa có installedAt record
-      // → tự động lưu (trường hợp pack được add trước khi có tính năng tracking)
-      if (installedInWhatsApp && !hasInstalledRecord) {
-        AppLogger.i(
-          '[UserPackDetailScreen] Pack installed in WhatsApp but no record found, marking as installed: ${_pack.id}',
-        );
-        service.markPackAsInstalled(_pack.id);
-      }
-
-      final needsUpdate =
-          updateNeedsUpdate ? service.packNeedsUpdate(_pack.id) : _needsUpdate;
-
-      AppLogger.i(
-        '[UserPackDetailScreen] Check installed status: ${_pack.id}\n'
-        '   - WhatsApp native: $installedInWhatsApp\n'
-        '   - Has installedAt record: $hasInstalledRecord (timestamp: $installedAt)\n'
-        '   - Final isInstalled: $isInstalled\n'
-        '   - needsUpdate: $needsUpdate\n'
-        '   - lastModifiedAtMs: ${_pack.lastModifiedAtMs}',
-      );
-
-      if (mounted) {
-        setState(() {
-          _isInstalled = isInstalled;
-          _isChecking = false;
-          if (updateNeedsUpdate) {
-            _needsUpdate = needsUpdate;
-          }
-        });
-      }
-    } catch (e) {
-      AppLogger.e('[UserPackDetailScreen] Failed to check installed status', e);
-      if (mounted) {
-        setState(() {
-          _isChecking = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _sharePack() async {
-    final stickers = _pack.stickerFileUris;
-    final files = <XFile>[];
-
-    for (final uri in stickers) {
-      final file = File.fromUri(Uri.parse(uri));
-      if (!file.existsSync()) continue;
-      files.add(XFile(file.path, mimeType: 'image/webp'));
-    }
-
-    if (files.isEmpty) {
-      AppDialogs.showWarning('No stickers to share.');
-      return;
-    }
-
-    // ignore: deprecated_member_use
-    await Share.shareXFiles(files, subject: _pack.title);
-  }
-
-  void _reloadFromStorage() {
-    final service = Get.find<UserStickerPackService>();
-    final refreshed = service.getById(_pack.id);
-    if (refreshed != null) {
-      final needsUpdate = service.packNeedsUpdate(refreshed.id);
-      AppLogger.i(
-        '[UserPackDetailScreen] Reloading pack: ${refreshed.id}, '
-        'lastModifiedAtMs=${refreshed.lastModifiedAtMs}, needsUpdate=$needsUpdate, '
-        'stickerCount=${refreshed.stickerFileUris.length}',
-      );
-      if (mounted) {
-        setState(() {
-          _pack = refreshed;
-          _changed = true;
-          _needsUpdate = needsUpdate;
-        });
-        // Kiểm tra lại trạng thái installed sau khi reload (không update needsUpdate vì đã tính ở trên)
-        _checkInstalledStatus(updateNeedsUpdate: false);
-      }
-    }
-  }
-
-  Future<void> _addSticker() async {
-    // Route đến đúng screen dựa trên loại pack
-    if (_pack.isAnimated) {
-      // Pack animated → route đến select video screen
-      // Truyền goToUserPackDetail: true để sau khi tạo xong sẽ quay lại pack detail
-      await Get.toNamed(
-        AppRoutes.createAnimatedSelectVideo,
-        arguments: {
-          'pack': _pack,
-          'isNewPack': false,
-          'goToUserPackDetail': true, // Quay lại pack detail sau khi tạo xong
-        },
-      );
-    } else {
-      // Pack static → route đến select image screen
-      await Get.toNamed(
-        AppRoutes.createStickerSelectImage,
-        arguments: {'pack': _pack, 'goToUserPackDetail': true},
-      );
-    }
-    if (!mounted) return;
-    // Đợi một chút để đảm bảo file đã được lưu
-    await Future.delayed(const Duration(milliseconds: 100));
-    _reloadFromStorage();
-  }
-
-  Future<void> _exportPack() async {
-    if (_isSending) return;
-    if (mounted) setState(() => _isSending = true);
-
-    try {
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      final installed = await _whatsApp.isWhatsAppInstalled();
-      if (!installed) {
-        AppDialogs.showWhatsAppNotInstalled();
-        return;
-      }
-
-      final result = await _whatsApp.addUserPack(_pack);
-
-      if (result == 'cancelled') {
-        return;
-      } else if (result == 'already_added' ||
-          result == 'add_successful' ||
-          result == 'success') {
-        // Reload pack để lấy lastModifiedAtMs mới nhất
-        final service = Get.find<UserStickerPackService>();
-        final refreshedPack = service.getById(_pack.id);
-        if (refreshedPack != null) {
-          _pack = refreshedPack;
-        }
-
-        // Kiểm tra xem đây là update hay add mới
-        final wasUpdating = _needsUpdate;
-
-        // Đánh dấu pack đã được thêm vào WhatsApp
-        // Lưu lastModifiedAtMs hiện tại của pack làm installedAt
-        // Để sau này nếu pack được chỉnh sửa, lastModifiedAtMs sẽ > installedAt
-        service.markPackAsInstalled(_pack.id);
-
-        // Cập nhật trạng thái đã được thêm vào
-        if (mounted) {
-          setState(() {
-            _isInstalled = true;
-            _needsUpdate =
-                false; // Vừa mới install/update, không cần update nữa
-          });
-        }
-
-        // Hiển thị thông báo phù hợp
-        if (wasUpdating) {
-          // Đây là update pack (pack cũ đã được WhatsApp tự động replace)
-          AppDialogs.showStickerUpdatedSuccess();
-        } else if (result == 'already_added') {
-          AppDialogs.showStickerAlreadyAdded();
-        } else {
-          AppDialogs.showStickerAddedSuccess();
-        }
-      }
-    } catch (e) {
-      AppDialogs.showError(e.toString());
-    } finally {
-      if (mounted) setState(() => _isSending = false);
-    }
-  }
-
-  Future<void> _confirmDeletePack() async {
-    final ok = await AppDialogs.showDeletePackageConfirm();
-    if (!ok) return;
-
-    final service = Get.find<UserStickerPackService>();
-    service.deletePack(packId: _pack.id, deleteFiles: true);
-
-    Get.offAllNamed(AppRoutes.mySticker);
-  }
-
-  Future<void> _renamePack() async {
-    final result = await AppDialogs.showPackNameInputDialog(
-      title: 'default_pack_name'.tr,
-      initialText: _pack.title,
-      hintText: 'Sticker pack name...',
-    );
-    if (result == null) return;
-
-    final service = Get.find<UserStickerPackService>();
-    final updated = service.renamePack(packId: _pack.id, newTitle: result);
-    if (updated != null) {
-      final needsUpdate = service.packNeedsUpdate(updated.id);
-      setState(() {
-        _pack = updated;
-        _changed = true;
-        _needsUpdate = needsUpdate;
-      });
-    }
-  }
-
-  void _openStickerViewer(String stickerUri) {
-    AppDialogs.showStickerViewer(
-      stickerUri: stickerUri,
-      onDelete: () async {
-        final service = Get.find<UserStickerPackService>();
-        service.removeStickerUri(
-          packId: _pack.id,
-          stickerFileUri: stickerUri,
-          deleteFile: true,
-        );
-        Get.back();
-        // Đợi một chút để đảm bảo file đã được xóa và pack đã được update
-        await Future.delayed(const Duration(milliseconds: 100));
-        if (mounted) {
-          _reloadFromStorage();
-        }
-      },
-      onShare: () async {
-        final file = File.fromUri(Uri.parse(stickerUri));
-        if (!file.existsSync()) return;
-        await Share.shareXFiles([
-          XFile(file.path, mimeType: 'image/webp'),
-        ], subject: _pack.title);
-      },
-      onEdit: () async {
-        Get.back();
-        // Kiểm tra nếu pack là animated → show dialog thông báo
-        // Vì FFmpeg trên Android không hỗ trợ edit trực tiếp WebP động
-        // User cần tạo lại từ video để thêm text
-        if (_pack.isAnimated) {
-          await Get.dialog(
-            AlertDialog(
-              title: Text('edit_animated_sticker_title'.tr),
-              content: Text(
-                'edit_animated_sticker_message'.tr,
-                style: const TextStyle(fontSize: 14),
-              ),
-              actions: [
-                TextButton(onPressed: () => Get.back(), child: Text('ok'.tr)),
-              ],
-            ),
-          );
-          return;
-        } else {
-          // Static sticker → navigate đến editSticker
-          await Get.toNamed(
-            AppRoutes.editSticker,
-            arguments: {'pack': _pack, 'stickerUri': stickerUri},
-          );
-        }
-        if (!mounted) return;
-        _reloadFromStorage();
-      },
-    );
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final stickers = _pack.stickerFileUris;
+    final viewModel = Get.put(UserPackDetailViewModel());
 
     return WillPopScope(
       onWillPop: () async {
-        Get.back(result: _changed);
+        Get.back(result: viewModel.hasChanged);
         return false;
       },
       child: Scaffold(
         appBar: AppBar(
           leading: IconButton(
             onPressed: () {
-              Get.back(result: _changed);
+              Get.back(result: viewModel.hasChanged);
             },
             icon: const Icon(Icons.arrow_back, color: Colors.black),
           ),
           actions: [
             IconButton(
               icon: const Icon(Icons.edit_outlined, color: Colors.black),
-              onPressed: _renamePack,
+              onPressed: viewModel.renamePack,
             ),
             IconButton(
               icon: const Icon(Icons.share_outlined, color: Colors.black),
-              onPressed: _sharePack,
+              onPressed: viewModel.sharePack,
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline, color: Colors.black),
-              onPressed: _confirmDeletePack,
+              onPressed: viewModel.confirmDeletePack,
             ),
           ],
         ),
-        body: Column(
-          children: [
-            UserPackHeader(title: _pack.title, stickerCount: stickers.length),
-            UserPackStickerGrid(
-              stickers: stickers,
-              onAddSticker: _addSticker,
-              onOpenSticker: _openStickerViewer,
-            ),
-            Builder(
-              builder: (context) {
-                // Tính lại needsUpdate mỗi lần build để đảm bảo luôn đúng
-                final service = Get.find<UserStickerPackService>();
-                // Reload pack để lấy lastModifiedAtMs mới nhất
-                final refreshedPack = service.getById(_pack.id);
-                final currentPack = refreshedPack ?? _pack;
-                final currentNeedsUpdate = service.packNeedsUpdate(
-                  currentPack.id,
-                );
+        body: Obx(() {
+          // Đọc pack trực tiếp trong Obx builder
+          final pack = viewModel.pack.value;
 
-                // Update state nếu giá trị thay đổi
-                if (currentNeedsUpdate != _needsUpdate && mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) {
-                      setState(() {
-                        _needsUpdate = currentNeedsUpdate;
-                        if (refreshedPack != null) {
-                          _pack = refreshedPack;
-                        }
-                      });
-                    }
-                  });
-                }
+          if (pack == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-                return UserPackExportButton(
-                  isSending: _isSending,
-                  onPressed: _exportPack,
-                  isInstalled: _isInstalled,
-                  isChecking: _isChecking,
-                  needsUpdate: currentNeedsUpdate,
-                );
-              },
-            ),
-          ],
-        ),
+          final stickers = pack.stickerFileUris;
+
+          return Column(
+            children: [
+              UserPackHeader(title: pack.title, stickerCount: stickers.length),
+              UserPackStickerGrid(
+                stickers: stickers,
+                onAddSticker: viewModel.addSticker,
+                onOpenSticker: viewModel.openStickerViewer,
+              ),
+              Obx(
+                () => UserPackExportButton(
+                  isSending: viewModel.isSending.value,
+                  onPressed: viewModel.exportPack,
+                  isInstalled: viewModel.isInstalled.value,
+                  isChecking: viewModel.isChecking.value,
+                  needsUpdate: viewModel.needsUpdate.value,
+                ),
+              ),
+            ],
+          );
+        }),
       ),
     );
   }

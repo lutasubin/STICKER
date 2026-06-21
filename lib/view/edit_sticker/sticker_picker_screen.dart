@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:sticker_app/service/sticker/sticker_edit_service.dart';
 import 'package:sticker_app/service/sticker/video_cache_service.dart';
 import 'package:sticker_app/view/edit_sticker/widgets/sticker_layer_widget.dart';
+import 'package:sticker_app/viewmodel/sticker_picker_viewmodel.dart';
 import 'package:video_player/video_player.dart';
 
 /// Màn hình chọn sticker (tách riêng như trong ảnh)
@@ -41,6 +43,9 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
   @override
   void initState() {
     super.initState();
+    // Initialize ViewModel
+    Get.put(StickerPickerViewModel());
+
     _loadBackground();
     _loadStickers();
   }
@@ -146,11 +151,14 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
   }
 
   /// Tính vị trí mặc định dựa trên category
+  /// Trả về CENTER position của sticker trong canvas coordinates (512x512)
   Offset _getDefaultPositionForCategory(StickerCategory category) {
     // Tất cả tính toán trong canvas coordinates (512x512)
+    // Position là CENTER của sticker
     switch (category) {
       case StickerCategory.hat:
         // Mũ - ở trên đầu (phần trên của canvas)
+        // Đảm bảo không quá gần biên trên (ít nhất 15% từ trên xuống)
         return Offset(_canvasSize * 0.5, _canvasSize * 0.15);
       case StickerCategory.glass:
         // Kính - ở vị trí mắt (giữa trên)
@@ -169,27 +177,60 @@ class _StickerPickerScreenState extends State<StickerPickerScreen> {
         return Offset(_canvasSize * 0.5, _canvasSize * 0.5);
       case StickerCategory.textStyle:
         // Text style - ở giữa dưới
+        // Đảm bảo không quá gần biên dưới (ít nhất 15% từ dưới lên)
         return Offset(_canvasSize * 0.5, _canvasSize * 0.7);
     }
+  }
+
+  /// Clamp position để đảm bảo sticker không bị ra ngoài canvas
+  /// Position là CENTER của sticker
+  Offset _clampPositionToCanvas(Offset position, double stickerSize) {
+    final halfSticker = stickerSize / 2;
+    final minX = halfSticker;
+    final maxX = _canvasSize - halfSticker;
+    final minY = halfSticker;
+    final maxY = _canvasSize - halfSticker;
+    
+    return Offset(
+      position.dx.clamp(minX, maxX),
+      position.dy.clamp(minY, maxY),
+    );
   }
 
   void _onStickerSelected(String stickerPath) {
     setState(() {
       _selectedStickerPath = stickerPath;
+      
       // Tạo sticker layer mới với vị trí mặc định dựa trên category
-      // Offset một chút để tránh trùng với sticker cũ
+      // Position là CENTER của sticker trong canvas coordinates (512x512)
       final existingCount = _stickerLayers.length;
       final defaultPosition = _getDefaultPositionForCategory(_selectedCategory);
-      final offsetX = (existingCount % 3) * 30.0 - 30.0; // -30, 0, 30
-      final offsetY = (existingCount ~/ 3) * 30.0;
+      
+      // Tính toán offset để tránh trùng với sticker cũ
+      // Sử dụng offset xoay tròn để phân bố đều
+      final angle = (existingCount * 0.5) * math.pi; // Góc xoay (radian)
+      final radius = 40.0 + (existingCount * 5.0); // Bán kính tăng dần
+      final offsetX = radius * math.cos(angle);
+      final offsetY = radius * math.sin(angle);
+      
+      // Tính position mới với offset
+      final newPosition = Offset(
+        defaultPosition.dx + offsetX,
+        defaultPosition.dy + offsetY,
+      );
+      
+      // Tính kích thước sticker để clamp position chính xác
+      const stickerSizeRatio = 0.3;
+      final baseStickerSize = _canvasSize * stickerSizeRatio;
+      final stickerSize = baseStickerSize * 1.0; // Scale mặc định là 1.0
+      
+      // Clamp position để đảm bảo sticker không bị ra ngoài canvas
+      final clampedPosition = _clampPositionToCanvas(newPosition, stickerSize);
 
       final newLayer = StickerLayer(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         imagePath: stickerPath,
-        position: Offset(
-          defaultPosition.dx + offsetX,
-          defaultPosition.dy + offsetY,
-        ),
+        position: clampedPosition,
         scale: 1.0,
         rotation: 0.0,
       );

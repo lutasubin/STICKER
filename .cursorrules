@@ -11,50 +11,107 @@
 
 ## 🏗️ Kiến trúc dự án
 
-### Cấu trúc thư mục
+### Cấu trúc thư mục (MVVM + Repository Pattern + Service Layer)
 ```
 lib/
-├── controller/          # GetX Controllers
+├── data/               # Data layer
+│   ├── model/          # Pure data classes (StickerPack, UserStickerPack, etc.)
+│   ├── service/        # Low-level data access (REST API, Local storage, etc.)
+│   └── repository/     # Middle layer (data mapping, caching, combine services)
+├── viewmodel/          # ViewModel layer (GetX Controllers - business logic)
+├── view/               # View layer (UI only - StatelessWidget/StatefulWidget)
+├── controller/         # Legacy Controllers (đang migrate sang ViewModel)
 ├── helper/             # Utilities (dialogs, logger, translate)
-├── model/              # Data models
 ├── router/             # App routing (GetX)
-├── service/            # Business logic services
-├── view/               # UI screens & widgets
+├── service/            # Legacy services (đang migrate sang data/service)
+├── core/               # Core utilities
+│   ├── constants/      # App constants (colors, sizes, routes, etc.)
+│   └── utils/          # Common utility functions
 ├── main.dart           # Entry point
 └── sticker_app.dart    # Main app configuration
 ```
 
-### Kiến trúc phân lớp
-1. **View Layer**: Screens và Widgets (dùng GetX reactive UI)
-2. **Controller Layer**: GetX Controllers quản lý state
-3. **Service Layer**: Business logic (WhatsApp integration, background removal, etc.)
-4. **Model Layer**: Data classes (StickerPack, UserStickerPack, Onboard)
+### Kiến trúc phân lớp (MVVM + Repository Pattern)
+1. **View Layer** (`lib/view/`): 
+   - Chỉ render UI (StatelessWidget/StatefulWidget)
+   - Quan sát ViewModel state qua `Obx`, `GetX`, `GetBuilder`
+   - KHÔNG có business logic, KHÔNG gọi Repository/Service trực tiếp
+   
+2. **ViewModel Layer** (`lib/viewmodel/`):
+   - Extends `GetxController`
+   - Quản lý business logic và state
+   - Gọi Repository (KHÔNG gọi Service trực tiếp)
+   - Expose state cho View qua Rx/Rxn variables
+   
+3. **Repository Layer** (`lib/data/repository/`):
+   - Middle layer giữa ViewModel và Service
+   - Trách nhiệm: data mapping, caching, combine multiple services
+   - ViewModel PHẢI gọi Repository, KHÔNG được gọi Service trực tiếp
+   
+4. **Service Layer** (`lib/data/service/`):
+   - Chỉ xử lý low-level data access (REST API, Firebase, Local storage)
+   - KHÔNG có business logic
+   - One responsibility per service
+   - KHÔNG phụ thuộc vào View hoặc ViewModel
+   
+5. **Model Layer** (`lib/data/model/`):
+   - Pure data classes only
+   - fromJson/toJson methods
+   - KHÔNG có logic
+
+### Dependency Flow (MANDATORY)
+```
+View → ViewModel → Repository → Service → Data Source
+```
+**KHÔNG được bypass layers!**
 
 ## 🎯 Nguyên tắc code chính
 
-### 1. State Management với GetX
+### 1. State Management với GetX (MVVM Pattern)
 - **LUÔN** dùng `GetX`, `Obx`, hoặc `GetBuilder` cho reactive UI
 - **KHÔNG** sử dụng `setState()` hoặc Provider
-- Controller phải kế thừa `GetxController`
-- Observable variables dùng `.obs` và cập nhật bằng `.value`
+- **ViewModel** phải kế thừa `GetxController` (KHÔNG dùng Controller cũ)
+- Observable variables dùng `.obs` hoặc `Rx<T>()` và cập nhật bằng `.value`
 - Dependency injection qua `Get.put()`, `Get.lazyPut()`, hoặc `Bindings`
+- View PHẢI inject ViewModel trong `build()` method
 
 ```dart
-// ✅ Đúng
-class HomeController extends GetxController {
-  final isLoading = false.obs;
+// ✅ Đúng - ViewModel
+class HomeViewModel extends GetxController {
+  final UserStickerPackRepository _repository;
   
-  void loadData() {
+  HomeViewModel({UserStickerPackRepository? repository})
+    : _repository = repository ?? Get.find<UserStickerPackRepository>();
+  
+  final isLoading = false.obs;
+  final packs = <UserStickerPack>[].obs;
+  
+  Future<void> loadData() async {
     isLoading.value = true;
-    // ... logic
-    isLoading.value = false;
+    try {
+      packs.value = _repository.getAll();
+    } finally {
+      isLoading.value = false;
+    }
   }
 }
 
-// UI
-Obx(() => controller.isLoading.value 
-  ? CircularProgressIndicator() 
-  : Content())
+// ✅ Đúng - View (UI only)
+class HomeScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final viewModel = Get.put(HomeViewModel());
+    
+    return Scaffold(
+      body: Obx(() => viewModel.isLoading.value
+        ? CircularProgressIndicator()
+        : ListView.builder(
+            itemCount: viewModel.packs.length,
+            itemBuilder: (context, index) => _buildPackTile(viewModel.packs[index]),
+          )),
+    );
+  }
+}
 ```
 
 ### 2. Navigation với GetX
@@ -73,8 +130,10 @@ Navigator.push(context, MaterialPageRoute(...));
 ### 3. Quản lý assets
 - Sticker packs phải tuân theo chuẩn WhatsApp:
   - **Kích thước**: 512x512 pixels (bắt buộc)
-  - **Định dạng**: WebP
-  - **Dung lượng**: < 100KB mỗi sticker
+  - **Định dạng**: WebP (static) hoặc Animated WebP (animated)
+  - **Dung lượng**: 
+    - Static sticker: < 100KB mỗi sticker
+    - Animated sticker: < 500KB mỗi sticker (tự động compress nếu vượt)
   - **Số lượng**: 3-30 stickers mỗi pack
   - **Tray icon**: < 50KB, kích thước 24x24 đến 512x512
   - **Emojis**: Mỗi sticker có 1-3 emoji
@@ -133,8 +192,9 @@ Navigator.push(context, MaterialPageRoute(...));
 
 ### 3. Assets
 - **Lỗi**: Sticker không load hoặc WhatsApp reject
-  - **Nguyên nhân**: File không đúng 512x512 hoặc > 100KB
+  - **Nguyên nhân**: File không đúng 512x512 hoặc > 100KB (static) / > 500KB (animated)
   - **Khắc phục**: Validate tất cả sticker assets trước khi thêm vào pack
+  - **Animated sticker**: Tự động compress nếu > 500KB (đã implement trong `AnimatedStickerService.compressAnimatedWebPIfNeeded()`)
 
 ## 🔧 Công việc thường gặp
 
@@ -154,11 +214,14 @@ StickerPack(
 ),
 ```
 
-### Thêm screen mới
-1. Tạo file trong `lib/view/{feature}/{screen_name}.dart`
-2. Tạo controller trong `lib/controller/{feature}/{feature}_controller.dart`
-3. Thêm route vào `lib/router/router.dart`
-4. Sử dụng GetView hoặc StatelessWidget với GetX
+### Thêm screen mới (MVVM Pattern)
+1. Tạo View file trong `lib/view/{feature}/{screen_name}.dart` (UI only)
+2. Tạo ViewModel trong `lib/viewmodel/{feature}_viewmodel.dart` (business logic)
+3. Tạo Repository trong `lib/data/repository/{feature}_repository.dart` (nếu cần)
+4. Tạo Service trong `lib/data/service/{feature}_service.dart` (nếu cần)
+5. Thêm route vào `lib/router/router.dart`
+6. View PHẢI là StatelessWidget, inject ViewModel trong `build()`
+7. ViewModel PHẢI gọi Repository, KHÔNG gọi Service trực tiếp
 
 ### Debug native code
 1. Kiểm tra logs: `flutter run` và xem console
@@ -214,9 +277,15 @@ class MyService {
 }
 ```
 
-### GetX Controller Pattern
+### ViewModel Pattern (MVVM)
 ```dart
-class FeatureController extends GetxController {
+// ✅ ViewModel - Business logic
+class FeatureViewModel extends GetxController {
+  final FeatureRepository _repository;
+  
+  FeatureViewModel({FeatureRepository? repository})
+    : _repository = repository ?? Get.find<FeatureRepository>();
+  
   final isLoading = false.obs;
   final data = Rx<DataType?>(null);
   
@@ -229,7 +298,7 @@ class FeatureController extends GetxController {
   Future<void> loadData() async {
     isLoading.value = true;
     try {
-      final result = await FeatureService().fetchData();
+      final result = await _repository.fetchData(); // Gọi Repository, KHÔNG gọi Service
       data.value = result;
     } catch (e) {
       Get.snackbar('Error', e.toString());
@@ -244,30 +313,62 @@ class FeatureController extends GetxController {
     super.onClose();
   }
 }
+
+// ✅ Repository - Middle layer
+class FeatureRepository extends GetxService {
+  final FeatureService _service;
+  
+  FeatureRepository({FeatureService? service})
+    : _service = service ?? Get.find<FeatureService>();
+  
+  Future<DataType> fetchData() async {
+    // Data mapping, caching, combine services
+    return await _service.fetchData();
+  }
+}
+
+// ✅ Service - Low-level data access
+class FeatureService extends GetxService {
+  Future<DataType> fetchData() async {
+    // REST API, Firebase, Local storage only
+    // NO business logic
+  }
+}
 ```
 
-### Screen Pattern
+### View Pattern (MVVM - UI only)
 ```dart
+// ✅ View - UI only, NO business logic
 class FeatureScreen extends StatelessWidget {
   const FeatureScreen({super.key});
   
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(FeatureController());
+    final viewModel = Get.put(FeatureViewModel()); // Inject ViewModel
     
     return Scaffold(
       appBar: AppBar(title: const Text('Feature')),
       body: Obx(() {
-        if (controller.isLoading.value) {
+        if (viewModel.isLoading.value) {
           return const Center(child: CircularProgressIndicator());
         }
-        return _buildContent(controller);
+        return _buildContent(viewModel);
       }),
     );
   }
   
-  Widget _buildContent(FeatureController controller) {
-    // UI implementation
+  Widget _buildContent(FeatureViewModel viewModel) {
+    // UI implementation only
+    // KHÔNG gọi Repository/Service trực tiếp
+    // Chỉ quan sát ViewModel state và gọi ViewModel methods
+    return ListView.builder(
+      itemCount: viewModel.data.value?.length ?? 0,
+      itemBuilder: (context, index) => _buildItem(viewModel.data.value![index]),
+    );
+  }
+  
+  Widget _buildItem(DataType item) {
+    // UI widget
   }
 }
 ```
@@ -298,17 +399,32 @@ App yêu cầu permissions (xử lý bằng `permission_handler`):
 
 ## 📌 Lưu ý quan trọng nhất
 
-1. **LUÔN** tuân theo chuẩn WhatsApp sticker (512x512, <100KB, 3-30 stickers)
-2. **LUÔN** dùng GetX cho state management và navigation
-3. **LUÔN** validate input trước khi gọi native code
-4. **LUÔN** handle errors với try-catch và thông báo rõ ràng cho user
-5. **LUÔN** test trên thiết bị thật (WhatsApp integration không hoạt động tốt trên emulator)
-6. **KHÔNG BAO GIỜ** bypass validation của WhatsApp
-7. **KHÔNG BAO GIỜ** dùng setState() - chỉ dùng GetX reactive
-8. **KHÔNG BAO GIỜ** hardcode strings - dùng translation service
-9. **LUÔN** kiểm tra version compatibility khi thêm thư viện mới (phải phù hợp với Flutter SDK ^^3.38.7)
-10. **LUÔN** viết code rõ ràng, dễ mở rộng và maintain
-11. **LUÔN** trả lời bằng tiếng Việt khi giao tiếp với người dùng
+### Kiến trúc MVVM + Repository Pattern
+1. **LUÔN** tuân theo dependency flow: View → ViewModel → Repository → Service
+2. **KHÔNG BAO GIỜ** bypass layers (View KHÔNG gọi Repository/Service trực tiếp)
+3. **KHÔNG BAO GIỜ** đặt business logic trong View (chỉ UI rendering)
+4. **KHÔNG BAO GIỜ** đặt business logic trong Service (chỉ data access)
+5. **LUÔN** đặt business logic trong ViewModel
+6. **LUÔN** ViewModel gọi Repository, Repository gọi Service
+
+### WhatsApp Sticker Requirements
+7. **LUÔN** tuân theo chuẩn WhatsApp sticker:
+   - Static sticker: 512x512, <100KB, WebP format
+   - Animated sticker: 512x512, <500KB, Animated WebP format
+   - Số lượng: 3-30 stickers mỗi pack
+   - Tray icon: < 50KB, 24x24 đến 512x512
+
+### Code Quality
+8. **LUÔN** dùng GetX cho state management và navigation
+9. **KHÔNG BAO GIỜ** dùng setState() - chỉ dùng GetX reactive (Obx, GetX, GetBuilder)
+10. **LUÔN** validate input trước khi gọi native code
+11. **LUÔN** handle errors với try-catch và thông báo rõ ràng cho user
+12. **KHÔNG BAO GIỜ** hardcode strings - dùng translation service
+13. **LUÔN** kiểm tra version compatibility khi thêm thư viện mới (phải phù hợp với Flutter SDK ^3.38.7)
+14. **LUÔN** viết code rõ ràng, dễ mở rộng và maintain
+15. **LUÔN** test trên thiết bị thật (WhatsApp integration không hoạt động tốt trên emulator)
+16. **LUÔN** trả lời bằng tiếng Việt khi giao tiếp với người dùng
+17. **LUÔN** các thư viện thêm vào phải chuẩn không bị lỗi, hỗ trợ 16 KB
 
 ---
 

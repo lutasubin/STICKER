@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:sticker_app/controller/home/home_controller.dart';
-import 'package:sticker_app/model/sticker_pack.dart';
+import 'package:sticker_app/core/constants/app_colors.dart';
+import 'package:sticker_app/core/constants/app_durations.dart';
+import 'package:sticker_app/data/model/sticker_pack.dart';
+import 'package:sticker_app/viewmodel/home_viewmodel.dart';
 
 /// Thanh tab category ở trên cùng màn hình Home.
 class HomeCategoryTabBar extends StatelessWidget
     implements PreferredSizeWidget {
   const HomeCategoryTabBar({super.key, required this.controller});
 
-  final HomeController controller;
+  final HomeViewModel controller;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -47,11 +49,11 @@ class HomeCategoryTabBar extends StatelessWidget
                         ),
                         const SizedBox(height: 8),
                         AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
+                          duration: AppDurations.shortDelay,
                           width: isSelected ? 32 : 0,
                           height: 3,
                           decoration: BoxDecoration(
-                            color: const Color(0xFF00C979),
+                            color: AppColors.primary,
                             borderRadius: BorderRadius.circular(1.5),
                           ),
                         ),
